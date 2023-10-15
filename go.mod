@@ -1,4 +1,4 @@
-module github.com/pandatix/24hiut-2023/l4/infra
+module github.com/ctfer-io/ctfer
 
 go 1.20
 

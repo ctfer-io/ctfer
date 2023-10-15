@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/pandatix/24hiut-2023/l4/infra/internal"
-	"github.com/pandatix/24hiut-2023/l4/infra/internal/components"
+	"github.com/ctfer-io/ctfer/internal"
+	"github.com/ctfer-io/ctfer/internal/components"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
