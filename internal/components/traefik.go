@@ -221,11 +221,11 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 
 	// Create TLS secret
 	// TODO make it configurable
-	tlsCrt, err := os.ReadFile("fullchain.pem")
+	tlsCrt, err := os.ReadFile("certs/fullchain.pem")
 	if err != nil {
 		return nil, err
 	}
-	tlsKey, err := os.ReadFile("privkey.pem")
+	tlsKey, err := os.ReadFile("certs/privkey.pem")
 	if err != nil {
 		return nil, err
 	}
