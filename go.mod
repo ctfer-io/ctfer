@@ -1,6 +1,6 @@
 module github.com/ctfer-io/ctfer
 
-go 1.20
+go 1.21
 
 require (
 	github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.26.0
