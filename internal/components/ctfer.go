@@ -147,7 +147,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:  pulumi.String("ctfd"),
-							Image: pulumi.String("registry.pandatix.dev/ctfd/ctfd:3.5.2"),
+							Image: pulumi.String(internal.GetImage("ctfd/ctfd:3.5.2")),
 							Env: corev1.EnvVarArray{
 								corev1.EnvVarArgs{
 									Name:  pulumi.String("DATABASE_URL"),
