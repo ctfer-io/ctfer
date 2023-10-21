@@ -3,6 +3,7 @@ package components
 import (
 	"fmt"
 
+	"github.com/ctfer-io/ctfer/internal"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
@@ -129,7 +130,7 @@ protected-mode no`),
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:  pulumi.String("redis"),
-							Image: pulumi.String("registry.pandatix.dev/redis:7.0.10"),
+							Image: pulumi.String(internal.GetImage("redis:7.0.10")),
 							Ports: corev1.ContainerPortArray{
 								corev1.ContainerPortArgs{
 									ContainerPort: pulumi.Int(6379),

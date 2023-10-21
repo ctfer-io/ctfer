@@ -3,6 +3,7 @@ package components
 import (
 	"fmt"
 
+	"github.com/ctfer-io/ctfer/internal"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
@@ -128,7 +129,7 @@ MASTER_CONNECT_RETRY=10;
 					InitContainers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:  pulumi.String("init-mariadb"),
-							Image: pulumi.String("registry.pandatix.dev/mariadb:10.7.8"),
+							Image: pulumi.String(internal.GetImage("mariadb:10.7.8")),
 							Command: pulumi.ToStringArray([]string{
 								`bash`,
 								`-c`,
@@ -179,7 +180,7 @@ cat /etc/mysql/conf.d/server-id.cnf`,
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:  pulumi.String("mariadb"),
-							Image: pulumi.String("registry.pandatix.dev/mariadb:10.7.8"),
+							Image: pulumi.String(internal.GetImage("mariadb:10.7.8")),
 							Ports: corev1.ContainerPortArray{
 								corev1.ContainerPortArgs{
 									ContainerPort: pulumi.Int(3306),

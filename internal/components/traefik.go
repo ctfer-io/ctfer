@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 
+	"github.com/ctfer-io/ctfer/internal"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
@@ -144,7 +145,7 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:  pulumi.String("traefik"),
-							Image: pulumi.String("registry.pandatix.dev/traefik:v2.10.1"),
+							Image: pulumi.String(internal.GetImage("traefik:v2.10.1")),
 							Args: pulumi.ToStringArray([]string{
 								"--api.insecure", // exposes dashboard on port 8080
 								"--providers.kubernetesingress",
