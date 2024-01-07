@@ -25,7 +25,7 @@ func InitConfig(ctx *pulumi.Context) {
 	config := config.New(ctx, "ctfer")
 	conf = &Config{
 		Namespace:       pulumi.String(def(config.Get("namespace"), "ctfer")),
-		IsMinikube:      true,
+		IsMinikube:      false,
 		Hostname:        pulumi.String(def(config.Get("hostname"), "localhost")),
 		ImageRepository: pulumi.String(def(config.Get("image-repository"), "")),
 	}

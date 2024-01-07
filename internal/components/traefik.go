@@ -149,12 +149,19 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 							Args: pulumi.ToStringArray([]string{
 								"--api.insecure", // exposes dashboard on port 8080
 								"--providers.kubernetesingress",
-								"--entrypoints.web.address=:443",
-								"--entrypoints.web.http.tls",
+								"--entrypoints.web.address=:80",
+								"--entrypoints.web.http.redirections.entryPoint.to=websecure",
+								"--entrypoints.web.http.redirections.entryPoint.scheme=https",
+								"--entrypoints.websecure.address=:443",
+								"--entrypoints.websecure.http.tls",
 							}),
 							Ports: corev1.ContainerPortArray{
 								corev1.ContainerPortArgs{
 									Name:          pulumi.String("web"),
+									ContainerPort: pulumi.Int(80),
+								},
+								corev1.ContainerPortArgs{
+									Name:          pulumi.String("websecure"),
 									ContainerPort: pulumi.Int(443),
 								},
 								corev1.ContainerPortArgs{
@@ -184,14 +191,16 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 			Ports: corev1.ServicePortArray{
 				corev1.ServicePortArgs{
 					Name: pulumi.String("web"),
+					Port: pulumi.Int(80),
+				},
+				corev1.ServicePortArgs{
+					Name: pulumi.String("websecure"),
 					Port: pulumi.Int(443),
 				},
 			},
 			Selector: traefikLabels,
 			ExternalIPs: pulumi.ToStringArray([]string{
-				"10.50.12.1",
-				"10.50.12.2",
-				"10.50.12.3",
+				"10.17.41.120",
 			}),
 		},
 	}, pulumi.Parent(tfk))
@@ -222,11 +231,11 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 
 	// Create TLS secret
 	// TODO make it configurable
-	tlsCrt, err := os.ReadFile("certs/fullchain.pem")
+	tlsCrt, err := os.ReadFile("certs/ctfd.crt")
 	if err != nil {
 		return nil, err
 	}
-	tlsKey, err := os.ReadFile("certs/privkey.pem")
+	tlsKey, err := os.ReadFile("certs/ctfd.key")
 	if err != nil {
 		return nil, err
 	}
