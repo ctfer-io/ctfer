@@ -147,7 +147,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:  pulumi.String("ctfd"),
-							Image: pulumi.String(internal.GetImage("ctfd/ctfd:3.5.2")),
+							Image: pulumi.String(internal.GetImage("ctfd/ctfd:3.6.1")),
 							Env: corev1.EnvVarArray{
 								corev1.EnvVarArgs{
 									Name:  pulumi.String("DATABASE_URL"),
@@ -250,7 +250,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 			Name:      pulumi.String("ctfd-ingress"),
 			Namespace: ns,
 			Annotations: pulumi.ToStringMap(map[string]string{
-				"traefik.ingress.kubernetes.io/router.entrypoints": "web",
+				"traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
 			}),
 		},
 		Spec: netwv1.IngressSpecArgs{
