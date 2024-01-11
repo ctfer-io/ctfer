@@ -1,0 +1,50 @@
+---
+kind: pipeline
+type: docker
+name: push-ctfer-dev1
+
+# TODO define PTFM on secret
+
+trigger: 
+  event: 
+    - push
+    
+steps: 
+  - name: get-kube-config
+    image: plugins/download
+    settings:
+      source: https://files.dev1.ctfer-io.lab/webdav/config
+      destination: config
+      username: 
+        from_secret: webdav_username
+      password:
+        from_secret: webdav_password
+    depends_on: 
+     - clone
+
+  - name: create-ns # tmp
+    image: bitnami/kubectl
+    environment:
+      KUBECONFIG: config
+    commands:
+      - kubectl create ns ctfer
+    depends_on:
+      - get-kube-config
+
+  - name: deploy-ctfer
+    image: ctferio/victor:v0.2.1
+    environment:
+      KUBECONFIG: config
+    settings:
+      statefile: https://files.dev1.ctfer-io.lab/webdav/dev1.state
+      username:
+        from_secret: webdav_username
+      password:
+        from_secret: webdav_password
+      configuration:
+        - hostname ctfd.dev1.ctfer-io.lab
+        - registry registry.dev1.ctfe-io.lab
+        - namespace ctfer
+    depends_on:
+      - create-ns
+    
