@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/pulumi/pulumi-kubernetes/sdk/v3 v3.30.2
 	github.com/pulumi/pulumi-random/sdk/v4 v4.15.1
-	github.com/pulumi/pulumi/sdk/v3 v3.102.0
+	github.com/pulumi/pulumi/sdk/v3 v3.103.1
 )
 
 require (
