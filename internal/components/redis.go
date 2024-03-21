@@ -68,6 +68,7 @@ protected-mode no`),
 	rd.URL = redisPass.Result.ApplyT(func(pass string) string {
 		return fmt.Sprintf("redis://:%s@redis-svc:6379", pass)
 	}).(pulumi.StringOutput)
+
 	_, err = corev1.NewSecret(ctx, "redis-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Labels:    redisLabels,

@@ -199,9 +199,10 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 				},
 			},
 			Selector: traefikLabels,
-			ExternalIPs: pulumi.ToStringArray([]string{
-				"10.17.41.120",
-			}),
+			// ExternalIPs: pulumi.ToStringArray([]string{
+			// 	"10.17.41.120",
+			// }),
+			// LoadBalancerIP: pulumi.String("10.17.41.120"), // TEST, must be configured by metallb
 		},
 	}, pulumi.Parent(tfk))
 	if err != nil {
