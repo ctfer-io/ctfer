@@ -251,6 +251,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 			Namespace: ns,
 			Annotations: pulumi.ToStringMap(map[string]string{
 				"traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
+				"pulumi.com/skipAwait":                             "true",
 			}),
 		},
 		Spec: netwv1.IngressSpecArgs{
@@ -288,10 +289,11 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 	}
 
 	return ing.Status.ApplyT(func(status *netwv1.IngressStatus) string {
-		ingress := status.LoadBalancer.Ingress[0]
-		if ingress.Hostname != nil {
-			return fmt.Sprintf("http://%s", *ingress.Hostname)
-		}
-		return fmt.Sprintf("http://%s", *ingress.Ip)
+		// ingress := status.LoadBalancer.Ingress[0]
+		// if ingress.Hostname != nil {
+		// 	return fmt.Sprintf("http://%s", *ingress.Hostname)
+		// }
+		// return fmt.Sprintf("http://%s", *ingress.Ip)
+		return fmt.Sprintf("http://ctfd.dev1.ctfer-io.lab")
 	}).(pulumi.StringOutput), nil
 }
