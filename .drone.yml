@@ -8,6 +8,7 @@ name: push-ctfer-dev1
 trigger: 
   event: 
     - push
+    - custom
     
 steps: 
   - name: get-kube-config
@@ -22,29 +23,46 @@ steps:
     depends_on: 
      - clone
 
-  - name: create-ns # tmp
-    image: bitnami/kubectl
+  # TODO remove this steps when step-issuers is enabled inside cluster
+  - name: configure-secrets
+    image: alpine
     environment:
-      KUBECONFIG: config
+      B64_CTFD_CRT:
+        from_secret: b64_ctfd_crt 
+      B64_CTFD_KEY:
+        from_secret: b64_ctfd_key 
     commands:
-      - kubectl create ns ctfer
+      - mkdir -p certs
+      - echo $B64_CTFD_CRT | base64 -d > certs/ctfd.crt
+      - echo $B64_CTFD_KEY | base64 -d > certs/ctfd.key
     depends_on:
-      - get-kube-config
+      - clone
+
+  # - name: create-ns # tmp
+  #   image: bitnami/kubectl
+  #   environment:
+  #     KUBECONFIG: config
+  #   commands:
+  #     - kubectl create ns ctfer
+  #   depends_on:
+  #     - get-kube-config
 
   - name: deploy-ctfer
-    image: ctferio/victor:v0.2.1
+    image: ctferio/victor:v0.2.2
     environment:
       KUBECONFIG: config
     settings:
+      verbose: true
       statefile: https://files.dev1.ctfer-io.lab/webdav/dev1.state
       username:
         from_secret: webdav_username
       password:
         from_secret: webdav_password
       configuration:
-        - hostname ctfd.dev1.ctfer-io.lab
-        - registry registry.dev1.ctfe-io.lab
-        - namespace ctfer
+        - image-repository registry.dev1.ctfer-io.lab
+        - hostname ctfd.dev1.ctfer-io.lab        
+        # - namespace ctfer
     depends_on:
-      - create-ns
+      - get-kube-config
+      - configure-secrets
     
