@@ -1,3 +1,4 @@
 certs/*
 Pulumi.*.yaml
 hack/main.go
+hack/store

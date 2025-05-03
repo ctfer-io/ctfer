@@ -4,10 +4,10 @@ import (
 	"fmt"
 
 	"github.com/ctfer-io/ctfer/internal"
-	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
-	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
-	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
-	netwv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/networking/v1"
+	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
+	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
+	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	netwv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi-random/sdk/v4/go/random"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -115,9 +115,9 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 			AccessModes: pulumi.ToStringArray([]string{
 				"ReadWriteMany",
 			}),
-			Resources: corev1.ResourceRequirementsArgs{
+			Resources: corev1.VolumeResourceRequirementsArgs{
 				Requests: pulumi.ToStringMap(map[string]string{
-					"storage": "2Gi",
+					"storage": "2Gi", // TODO make it configurable
 				}),
 			},
 		},
@@ -126,18 +126,17 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 		return pulumi.StringOutput{}, err
 	}
 
-	_, err = appsv1.NewDeployment(ctx, "ctfd-dep", &appsv1.DeploymentArgs{
+	_, err = appsv1.NewStatefulSet(ctx, "ctfd-sts", &appsv1.StatefulSetArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.String("ctfd-dep"),
+			Name:      pulumi.String("ctfd-sts"),
 			Namespace: ns,
 			Labels:    ctfdLabels,
 		},
-		Spec: appsv1.DeploymentSpecArgs{
+		Spec: appsv1.StatefulSetSpecArgs{
 			Selector: metav1.LabelSelectorArgs{
 				MatchLabels: ctfdLabels,
 			},
-			// TODO make CTFd replicas configurable
-			Replicas: pulumi.Int(1),
+			Replicas: pulumi.Int(3),
 			Template: &corev1.PodTemplateSpecArgs{
 				Metadata: &metav1.ObjectMetaArgs{
 					Namespace: ns,
@@ -147,18 +146,18 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:  pulumi.String("ctfd"),
-							Image: pulumi.String(internal.GetImage("ctfd/ctfd:3.6.1")),
+							Image: pulumi.String(internal.GetImage(string(internal.GetConfig().CtfdImage))),
 							Env: corev1.EnvVarArray{
 								corev1.EnvVarArgs{
-									Name:  pulumi.String("DATABASE_URL"),
+									Name:  pulumi.String("DATABASE_URL"), // TODO use secret ?
 									Value: mdb.URL,
 								},
 								corev1.EnvVarArgs{
-									Name:  pulumi.String("REDIS_URL"),
+									Name:  pulumi.String("REDIS_URL"), // TODO use secret ?
 									Value: rd.URL,
 								},
 								corev1.EnvVarArgs{
-									Name:  pulumi.String("UPLOAD_FOLDER"),
+									Name:  pulumi.String("UPLOAD_FOLDER"), // contains scenario.zip
 									Value: pulumi.String("/var/uploads"),
 								},
 								corev1.EnvVarArgs{
@@ -168,7 +167,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 							},
 							Ports: corev1.ContainerPortArray{
 								corev1.ContainerPortArgs{
-									ContainerPort: pulumi.Int(8080),
+									ContainerPort: pulumi.Int(8000),
 								},
 							},
 							VolumeMounts: corev1.VolumeMountArray{
@@ -210,13 +209,13 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 				},
 			},
 		},
-	}, pulumi.Parent(ctfer))
+	}, pulumi.Parent(ctfer), pulumi.DependsOn([]pulumi.Resource{mdb, rd}))
 	if err != nil {
 		return pulumi.StringOutput{}, err
 	}
 
 	// Export Service or Ingress with its URL
-	svc, err := corev1.NewService(ctx, "ctfd-svc", &corev1.ServiceArgs{
+	_, err = corev1.NewService(ctx, "ctfd-svc", &corev1.ServiceArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Labels:    ctfdLabels,
 			Name:      pulumi.String("ctfd-svc"),
@@ -235,13 +234,6 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 	}, pulumi.Parent(ctfer))
 	if err != nil {
 		return pulumi.StringOutput{}, err
-	}
-
-	if internal.GetConfig().IsMinikube {
-		return svc.Spec.ApplyT(func(spec *corev1.ServiceSpec) string {
-			// FIXME
-			return ""
-		}).(pulumi.StringOutput), nil
 	}
 
 	ing, err := netwv1.NewIngress(ctx, "ctfd-ingress", &netwv1.IngressArgs{
@@ -265,9 +257,11 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 								PathType: pulumi.String("Prefix"),
 								Backend: netwv1.IngressBackendArgs{
 									Service: netwv1.IngressServiceBackendArgs{
+										// Name: pulumi.String("ctfd-keda-svc"),
 										Name: pulumi.String("ctfd-svc"),
 										Port: netwv1.ServiceBackendPortArgs{
 											Name: pulumi.String("web"),
+											// Number: pulumi.Int(8080),
 										},
 									},
 								},

@@ -1,0 +1,20 @@
+---
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: ctfd-check-svc
+  namespace: ctfer
+spec:
+  hosts:
+    - ctfd.dev1.ctfer-io.lab
+  pathPrefixes:
+    - "/"
+  replicas:
+    max: 10
+    min: 1
+  scaleTargetRef:
+    kind: StatefulSet
+    name: ctfd-sts
+    port: 8000
+    service: ctfd-svc
+  targetPendingRequests: 1
