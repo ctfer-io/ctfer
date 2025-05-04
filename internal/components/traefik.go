@@ -36,7 +36,8 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 
 	// Provision K8s resources (https://doc.traefik.io/traefik/getting-started/quick-start-with-kubernetes/)
 	traefikLabels := pulumi.StringMap{
-		"app": pulumi.String("traefik"),
+		"ctfer.io/app-name": pulumi.String("traefik"),
+		"ctfer.io/part-of":  pulumi.String("ctfer"),
 	}
 
 	_, err = helmv4.NewChart(ctx, "traefik", &helmv4.ChartArgs{

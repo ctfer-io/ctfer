@@ -1,8 +1,6 @@
 package components
 
 import (
-	"fmt"
-
 	"github.com/ctfer-io/ctfer/internal"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -48,7 +46,8 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 	_, err := corev1.NewNamespace(ctx, "ctfer-ns", &corev1.NamespaceArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("global"),
+				"ctfer.io/app-name": pulumi.String("ctfd"),
+				"ctfer.io/part-of":  pulumi.String("ctfer"),
 			},
 			Name: ns,
 		},
@@ -62,7 +61,6 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 	// FIXME when scaled to 3, ctfd replicas errors
 	mdb, err := NewMariaDB(ctx, "mariadb-ctfd", &MariaDBArgs{
 		Namespace: ns,
-		Replicas:  pulumi.Int(1),
 	}, pulumi.Parent(ctfer))
 	if err != nil {
 		return pulumi.StringOutput{}, err
@@ -73,7 +71,6 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 	// FIXME when scaled to 3, ctfd replicas errors
 	rd, err := NewRedis(ctx, "redis-ctfd", &RedisArgs{
 		Namespace: ns,
-		Replicas:  pulumi.Int(1),
 	}, pulumi.Parent(ctfer))
 	if err != nil {
 		return pulumi.StringOutput{}, err
@@ -149,12 +146,22 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 							Image: pulumi.String(internal.GetImage(string(internal.GetConfig().CtfdImage))),
 							Env: corev1.EnvVarArray{
 								corev1.EnvVarArgs{
-									Name:  pulumi.String("DATABASE_URL"), // TODO use secret ?
-									Value: mdb.URL,
+									Name: pulumi.String("DATABASE_URL"),
+									ValueFrom: corev1.EnvVarSourceArgs{
+										SecretKeyRef: corev1.SecretKeySelectorArgs{
+											Name: mdb.SecretName,
+											Key:  pulumi.String("mariadb-url"),
+										},
+									},
 								},
 								corev1.EnvVarArgs{
-									Name:  pulumi.String("REDIS_URL"), // TODO use secret ?
-									Value: rd.URL,
+									Name: pulumi.String("REDIS_URL"),
+									ValueFrom: corev1.EnvVarSourceArgs{
+										SecretKeyRef: corev1.SecretKeySelectorArgs{
+											Name: rd.SecretName,
+											Key:  pulumi.String("redis-url"),
+										},
+									},
 								},
 								corev1.EnvVarArgs{
 									Name:  pulumi.String("UPLOAD_FOLDER"), // contains scenario.zip
@@ -190,6 +197,31 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 									"memory": "512Mi",
 								}),
 							},
+							ReadinessProbe: corev1.ProbeArgs{
+								HttpGet: corev1.HTTPGetActionArgs{
+									Path: pulumi.String("/"),
+									Port: pulumi.Int(8000),
+								},
+								InitialDelaySeconds: pulumi.Int(30),
+								PeriodSeconds:       pulumi.Int(3),
+								TimeoutSeconds:      pulumi.Int(5),
+								SuccessThreshold:    pulumi.Int(1),
+								FailureThreshold:    pulumi.Int(3),
+							},
+						},
+					},
+					Tolerations: corev1.TolerationArray{
+						corev1.TolerationArgs{
+							Key:               pulumi.String("node.kubernetes.io/not-ready"),
+							Operator:          pulumi.String("Exists"),
+							Effect:            pulumi.String("NoExecute"),
+							TolerationSeconds: pulumi.Int(30),
+						},
+						corev1.TolerationArgs{
+							Key:               pulumi.String("node.kubernetes.io/unreachable"),
+							Operator:          pulumi.String("Exists"),
+							Effect:            pulumi.String("NoExecute"),
+							TolerationSeconds: pulumi.Int(30),
 						},
 					},
 					Volumes: corev1.VolumeArray{
@@ -288,6 +320,6 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 		// 	return fmt.Sprintf("http://%s", *ingress.Hostname)
 		// }
 		// return fmt.Sprintf("http://%s", *ingress.Ip)
-		return fmt.Sprintf("http://ctfd.dev1.ctfer-io.lab")
+		return "http://ctfd.dev1.ctfer-io.lab"
 	}).(pulumi.StringOutput), nil
 }

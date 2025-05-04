@@ -12,7 +12,7 @@ import (
 type Redis struct {
 	pulumi.ResourceState
 
-	URL pulumi.StringOutput
+	SecretName pulumi.StringOutput
 }
 
 var _ pulumi.ComponentResource = (*Redis)(nil)
@@ -36,7 +36,8 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 
 	// Provision K8s resources
 	redisLabels := pulumi.StringMap{
-		"ctfer/infra": pulumi.String("redis"),
+		"ctfer.io/app-name": pulumi.String("redis"),
+		"ctfer.io/part-of":  pulumi.String("ctfer"),
 	}
 
 	// => Secret
@@ -48,8 +49,6 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 		return nil, err
 	}
 
-	rd.URL = pulumi.Sprintf("redis://:%s@redis-master:6379", redisPass.Result)
-
 	secret, err := corev1.NewSecret(ctx, "redis-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Labels:    redisLabels,
@@ -59,12 +58,14 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 		Type: pulumi.String("Opaque"),
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
 			"redis-password": redisPass.Result,
-			"redis-url":      rd.URL,
+			"redis-url":      pulumi.Sprintf("redis://:%s@redis-master:6379", redisPass.Result),
 		}),
 	}, pulumi.Parent(rd))
 	if err != nil {
 		return nil, err
 	}
+
+	rd.SecretName = secret.Metadata.Name().Elem()
 
 	_, err = helmv4.NewChart(ctx, "redis", &helmv4.ChartArgs{
 		Namespace: args.Namespace,
@@ -93,6 +94,21 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 						pulumi.String("ReadWriteMany"), // make the master deployable on all nodes if crash
 					},
 				},
+				// Taint-Based Eviction
+				"tolerations": pulumi.MapArray{
+					pulumi.Map{
+						"key":               pulumi.String("node.kubernetes.io/not-ready"),
+						"operator":          pulumi.String("Exists"),
+						"effect":            pulumi.String("NoExecute"),
+						"tolerationSeconds": pulumi.Int(30),
+					},
+					pulumi.Map{
+						"key":               pulumi.String("node.kubernetes.io/unreachable"),
+						"operator":          pulumi.String("Exists"),
+						"effect":            pulumi.String("NoExecute"),
+						"tolerationSeconds": pulumi.Int(30),
+					},
+				},
 			},
 			"architecture": pulumi.String("standalone"), // we don't use replicas for RO actions, TODO enable sentinel
 		},
@@ -107,6 +123,4 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 type RedisArgs struct {
 	// Namespace to deploy to.
 	Namespace pulumi.String
-	// Replicas is the number of secondary replicas to run.
-	Replicas pulumi.Int
 }

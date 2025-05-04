@@ -12,7 +12,8 @@ import (
 type MariaDB struct {
 	pulumi.ResourceState
 
-	URL pulumi.StringOutput
+	// URL        pulumi.StringOutput
+	SecretName pulumi.StringOutput
 }
 
 var _ pulumi.ComponentResource = (*MariaDB)(nil)
@@ -22,11 +23,11 @@ func NewMariaDB(ctx *pulumi.Context, name string, args *MariaDBArgs, opts ...pul
 	mdb := &MariaDB{}
 
 	// remote chart url
-	chartUrl := pulumi.String("oci://registry-1.docker.io/bitnamicharts/mariadb-galera").ToStringOutput()
+	chartUrl := pulumi.String("oci://registry-1.docker.io/bitnamicharts/mariadb").ToStringOutput()
 
 	// offline chart url
 	if internal.GetConfig().ChartsRepository != "" {
-		chartUrl = pulumi.Sprintf("%s/mariadb-galera", internal.GetConfig().ChartsRepository)
+		chartUrl = pulumi.Sprintf("%s/mariadb", internal.GetConfig().ChartsRepository)
 	}
 
 	// Register the Component Resource
@@ -37,7 +38,8 @@ func NewMariaDB(ctx *pulumi.Context, name string, args *MariaDBArgs, opts ...pul
 
 	// Provision K8s resources
 	mariadbLabels := pulumi.StringMap{
-		"ctfer/infra": pulumi.String("mariadb"),
+		"ctfer.io/app-name": pulumi.String("mariadb"),
+		"ctfer.io/part-of":  pulumi.String("ctfer"),
 	}
 
 	// => Secret
@@ -56,15 +58,13 @@ func NewMariaDB(ctx *pulumi.Context, name string, args *MariaDBArgs, opts ...pul
 	if err != nil {
 		return nil, err
 	}
-	backupPass, err := random.NewRandomPassword(ctx, "backupPass-secret", &random.RandomPasswordArgs{
+	replicationPass, err := random.NewRandomPassword(ctx, "replication-secret", &random.RandomPasswordArgs{
 		Length:  pulumi.Int(32),
 		Special: pulumi.BoolPtr(false),
 	}, pulumi.Parent(mdb))
 	if err != nil {
 		return nil, err
 	}
-
-	mdb.URL = pulumi.Sprintf("mysql+pymysql://%s:%s@mariadb-mariadb-galera/ctfd", masterUser, userPass.Result)
 
 	secret, err := corev1.NewSecret(ctx, "mariadb-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
@@ -74,19 +74,21 @@ func NewMariaDB(ctx *pulumi.Context, name string, args *MariaDBArgs, opts ...pul
 		},
 		Type: pulumi.String("Opaque"),
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
-			"mariadb-root-password":               masterPass.Result,
-			"mariadb-password":                    userPass.Result,
-			"mariadb-galera-mariabackup-password": backupPass.Result,
-			"mariadb-url":                         mdb.URL, // debug purpose
+			"mariadb-root-password":        masterPass.Result,
+			"mariadb-password":             userPass.Result,
+			"mariadb-replication-password": replicationPass.Result,
+			"mariadb-url":                  pulumi.Sprintf("mysql+pymysql://%s:%s@mariadb-headless/ctfd", masterUser, userPass.Result),
 		}),
 	}, pulumi.Parent(mdb))
 	if err != nil {
 		return nil, err
 	}
 
+	mdb.SecretName = secret.Metadata.Name().Elem()
+
 	_, err = helmv4.NewChart(ctx, "mariadb", &helmv4.ChartArgs{
 		Namespace: args.Namespace,
-		Version:   pulumi.String("14.2.3"),
+		Version:   pulumi.String("20.5.3"),
 		Chart:     chartUrl,
 		Values: pulumi.Map{
 			"global": internal.GetConfig().ImagesRepository.ToStringOutput().ApplyT(func(repo string) map[string]any {
@@ -101,15 +103,36 @@ func NewMariaDB(ctx *pulumi.Context, name string, args *MariaDBArgs, opts ...pul
 				}
 				return mp
 			}).(pulumi.MapOutput),
-			"db": pulumi.Map{
-				"user": masterUser,
-				"name": pulumi.String("ctfd"),
+			"auth": pulumi.Map{
+				"username":       masterUser,
+				"database":       pulumi.String("ctfd"),
+				"existingSecret": secret.Metadata.Name(), // use secret with generated passwords above
 			},
-			"existingSecret": secret.Metadata.Name(), // use secret with generated passwords above
-			"podLabels":      mariadbLabels,
-			"persistence": pulumi.Map{
-				"storageClass": pulumi.String("local-path"), // do not use longhorn here, replicas will be handle this
+			"primary": pulumi.Map{
+				"podLabels": mariadbLabels,
+				"persistence": pulumi.Map{
+					"storageClass": pulumi.String("longhorn"),
+					"accessModes": pulumi.StringArray{
+						pulumi.String("ReadWriteMany"),
+					},
+				},
+				// Taint-Based Eviction
+				"tolerations": pulumi.MapArray{
+					pulumi.Map{
+						"key":               pulumi.String("node.kubernetes.io/not-ready"),
+						"operator":          pulumi.String("Exists"),
+						"effect":            pulumi.String("NoExecute"),
+						"tolerationSeconds": pulumi.Int(30),
+					},
+					pulumi.Map{
+						"key":               pulumi.String("node.kubernetes.io/unreachable"),
+						"operator":          pulumi.String("Exists"),
+						"effect":            pulumi.String("NoExecute"),
+						"tolerationSeconds": pulumi.Int(30),
+					},
+				},
 			},
+			"architecture": pulumi.String("standalone"), // explicit
 		},
 	}, pulumi.Parent(mdb))
 	if err != nil {
@@ -122,6 +145,4 @@ func NewMariaDB(ctx *pulumi.Context, name string, args *MariaDBArgs, opts ...pul
 type MariaDBArgs struct {
 	// Namespace to deploy to.
 	Namespace pulumi.String
-	// Replicas is the number of secondary replicas to run.
-	Replicas pulumi.Int
 }
