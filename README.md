@@ -44,7 +44,7 @@ helm repo add kedacore https://kedacore.github.io/charts
 
 # install keda + http-add-on
 helm install keda kedacore/keda --namespace keda --create-namespace
-kelm install http-add-on kedacore/keda-add-ons-http -n keda
+helm install http-add-on kedacore/keda-add-ons-http -n keda
 
 ```
 
@@ -80,7 +80,7 @@ Modifier l'ingress pour faire référence à ce service plutôt que `ctfd-svc`.
 ```
 
 Modifier `internal/components/traefik.go` :
-Par défaut, treafik ne route pas les paquets vers un service en mode `ExternalName`. 
+Par défaut, traefik ne route pas les paquets vers un service en mode `ExternalName`. 
 Activer la feature dans le helm.
 
 ```go
