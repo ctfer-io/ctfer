@@ -10,11 +10,11 @@ import (
 // Config holds the values configured using pulumi CLI.
 type Config struct {
 	// Namespace in which ctfer will deploy the CTF.
-	Namespace pulumi.String
-	// Configure this variable using `pulumi config set isMinikube <bool>`.
-	IsMinikube      bool
-	Hostname        pulumi.String
-	ImageRepository pulumi.String
+	Namespace        pulumi.String
+	Hostname         pulumi.String
+	ImagesRepository pulumi.String
+	ChartsRepository pulumi.String
+	CtfdImage        pulumi.String
 }
 
 var (
@@ -24,10 +24,11 @@ var (
 func InitConfig(ctx *pulumi.Context) {
 	config := config.New(ctx, "ctfer")
 	conf = &Config{
-		Namespace:       pulumi.String(def(config.Get("namespace"), "ctfer")),
-		IsMinikube:      false,
-		Hostname:        pulumi.String(def(config.Get("hostname"), "localhost")),
-		ImageRepository: pulumi.String(def(config.Get("image-repository"), "")),
+		Namespace:        pulumi.String(def(config.Get("namespace"), "ctfer")),
+		Hostname:         pulumi.String(def(config.Get("hostname"), "localhost")),
+		ImagesRepository: pulumi.String(def(config.Get("images-repository"), "")),          // registry.dev1.ctfer-io.lab
+		ChartsRepository: pulumi.String(def(config.Get("charts-repository"), "")),          // oci://registry.dev1.ctfer-io.lab
+		CtfdImage:        pulumi.String(def(config.Get("ctfd-image"), "ctfd/ctfd:latest")), // ctferio/ctfd:3.7.7-0.3.0-rc1
 	}
 }
 
@@ -36,11 +37,11 @@ func GetConfig() *Config {
 }
 
 func GetImage(image string) string {
-	if GetConfig().ImageRepository == "" {
+	if GetConfig().ImagesRepository == "" {
 		return image
 	}
 
-	return fmt.Sprint(GetConfig().ImageRepository, "/", image)
+	return fmt.Sprint(GetConfig().ImagesRepository, "/", image)
 }
 
 func def[T comparable](act, def T) T {

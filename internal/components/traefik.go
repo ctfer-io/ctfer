@@ -5,10 +5,9 @@ import (
 	"os"
 
 	"github.com/ctfer-io/ctfer/internal"
-	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/apps/v1"
-	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/core/v1"
-	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/meta/v1"
-	rbacv1 "github.com/pulumi/pulumi-kubernetes/sdk/v3/go/kubernetes/rbac/v1"
+	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
+	helmv4 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v4"
+	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
@@ -21,6 +20,14 @@ var _ pulumi.ComponentResource = (*Traefik)(nil)
 func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pulumi.ResourceOption) (*Traefik, error) {
 	tfk := &Traefik{}
 
+	// remote chart url
+	chartUrl := pulumi.String("oci://ghcr.io/traefik/helm/traefik").ToStringOutput()
+
+	// offline chart url
+	if internal.GetConfig().ChartsRepository != "" {
+		chartUrl = pulumi.Sprintf("%s/traefik", internal.GetConfig().ChartsRepository)
+	}
+
 	// Regsiter the Component Resource
 	err := ctx.RegisterComponentResource("ctfer:l4:Traefik", name, tfk, opts...)
 	if err != nil {
@@ -29,201 +36,47 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 
 	// Provision K8s resources (https://doc.traefik.io/traefik/getting-started/quick-start-with-kubernetes/)
 	traefikLabels := pulumi.StringMap{
-		"app": pulumi.String("traefik"),
-	}
-	// => ClusterRole, used to create a dedicated service acccount for Traefik
-	_, err = rbacv1.NewClusterRole(ctx, "traefik-role", &rbacv1.ClusterRoleArgs{
-		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.String("traefik-role"),
-			Namespace: args.Namespace,
-			Labels:    traefikLabels,
-		},
-		Rules: rbacv1.PolicyRuleArray{
-			rbacv1.PolicyRuleArgs{
-				ApiGroups: pulumi.ToStringArray([]string{
-					"",
-				}),
-				Resources: pulumi.ToStringArray([]string{
-					"services",
-					"endpoints",
-					"secrets",
-				}),
-				Verbs: pulumi.ToStringArray([]string{
-					"get",
-					"list",
-					"watch",
-				}),
-			},
-			rbacv1.PolicyRuleArgs{
-				ApiGroups: pulumi.ToStringArray([]string{
-					"extensions",
-					"networking.k8s.io",
-				}),
-				Resources: pulumi.ToStringArray([]string{
-					"ingresses",
-					"ingressclasses",
-				}),
-				Verbs: pulumi.ToStringArray([]string{
-					"get",
-					"list",
-					"watch",
-				}),
-			},
-			rbacv1.PolicyRuleArgs{
-				ApiGroups: pulumi.ToStringArray([]string{
-					"extensions",
-					"networking.k8s.io",
-				}),
-				Resources: pulumi.ToStringArray([]string{
-					"ingresses/status",
-				}),
-				Verbs: pulumi.ToStringArray([]string{
-					"update",
-				}),
-			},
-		},
-	}, pulumi.Parent(tfk))
-	if err != nil {
-		return nil, err
+		"ctfer.io/app-name": pulumi.String("traefik"),
+		"ctfer.io/part-of":  pulumi.String("ctfer"),
 	}
 
-	// => ServiceAccount
-	_, err = corev1.NewServiceAccount(ctx, "traefik-account", &corev1.ServiceAccountArgs{
-		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.String("traefik-account"),
-			Namespace: args.Namespace,
-			Labels:    traefikLabels,
-		},
-	}, pulumi.Parent(tfk))
-	if err != nil {
-		return nil, err
-	}
-
-	// => ClusterRoleBinding, binds the ClusterRole and ServiceAccount
-	_, err = rbacv1.NewClusterRoleBinding(ctx, "traefik-role-binding", &rbacv1.ClusterRoleBindingArgs{
-		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.String("traefik-role-binding"),
-			Namespace: args.Namespace,
-			Labels:    traefikLabels,
-		},
-		RoleRef: rbacv1.RoleRefArgs{
-			ApiGroup: pulumi.String("rbac.authorization.k8s.io"),
-			Kind:     pulumi.String("ClusterRole"),
-			Name:     pulumi.String("traefik-role"),
-		},
-		Subjects: rbacv1.SubjectArray{
-			rbacv1.SubjectArgs{
-				Kind:      pulumi.String("ServiceAccount"),
-				Name:      pulumi.String("traefik-account"),
-				Namespace: args.Namespace,
+	_, err = helmv4.NewChart(ctx, "traefik", &helmv4.ChartArgs{
+		Namespace: args.Namespace,
+		Version:   pulumi.String("35.2.0"),
+		Chart:     chartUrl,
+		SkipCrds:  pulumi.Bool(true), // we do not use crds for now
+		Values: pulumi.Map{
+			"image": pulumi.Map{
+				"registry":   internal.GetConfig().ImagesRepository,
+				"repository": pulumi.String("library/traefik"),
 			},
-		},
-	}, pulumi.Parent(tfk))
-	if err != nil {
-		return nil, err
-	}
-
-	// => Deployment
-	_, err = appsv1.NewDeployment(ctx, "traefik-deployment", &appsv1.DeploymentArgs{
-		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.String("traefik-deployment"),
-			Namespace: args.Namespace,
-			Labels:    traefikLabels,
-		},
-		Spec: appsv1.DeploymentSpecArgs{
-			Replicas: pulumi.Int(1),
-			Selector: metav1.LabelSelectorArgs{
-				MatchLabels: traefikLabels,
+			"deployment": pulumi.Map{
+				"replicas":  pulumi.Int(3), // TODO mke it configurable
+				"podLabels": traefikLabels,
 			},
-			Template: corev1.PodTemplateSpecArgs{
-				Metadata: metav1.ObjectMetaArgs{
-					Namespace: args.Namespace,
-					Labels:    traefikLabels,
+			"providers": pulumi.Map{
+				"kubernetesCRD": pulumi.Map{
+					"enabled": pulumi.Bool(false),
 				},
-				Spec: corev1.PodSpecArgs{
-					ServiceAccountName: pulumi.String("traefik-account"),
-					Containers: corev1.ContainerArray{
-						corev1.ContainerArgs{
-							Name:  pulumi.String("traefik"),
-							Image: pulumi.String(internal.GetImage("traefik:v2.10.1")),
-							Args: pulumi.ToStringArray([]string{
-								"--api.insecure", // exposes dashboard on port 8080
-								"--providers.kubernetesingress",
-								"--entrypoints.web.address=:80",
-								"--entrypoints.web.http.redirections.entryPoint.to=websecure",
-								"--entrypoints.web.http.redirections.entryPoint.scheme=https",
-								"--entrypoints.websecure.address=:443",
-								"--entrypoints.websecure.http.tls",
-							}),
-							Ports: corev1.ContainerPortArray{
-								corev1.ContainerPortArgs{
-									Name:          pulumi.String("web"),
-									ContainerPort: pulumi.Int(80),
-								},
-								corev1.ContainerPortArgs{
-									Name:          pulumi.String("websecure"),
-									ContainerPort: pulumi.Int(443),
-								},
-								corev1.ContainerPortArgs{
-									Name:          pulumi.String("dashboard"),
-									ContainerPort: pulumi.Int(8080),
-								},
-							},
+				"kubernetesIngress": pulumi.Map{
+					"allowCrossNamespace": pulumi.Bool(true), // challenge on-demand
+					// "allowExternalNameServices": pulumi.Bool(true), // if keda enabled
+				},
+			},
+			"ports": pulumi.Map{
+				"web": pulumi.Map{
+					"redirections": pulumi.Map{
+						"entryPoint": pulumi.Map{
+							"scheme": pulumi.String("https"),
+							"to":     pulumi.String("websecure"),
 						},
 					},
 				},
 			},
-		},
-	}, pulumi.Parent(tfk))
-	if err != nil {
-		return nil, err
-	}
-
-	// => Services
-	_, err = corev1.NewService(ctx, "traefik-web-service", &corev1.ServiceArgs{
-		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.String("traefik-web-service"),
-			Namespace: args.Namespace,
-			Labels:    traefikLabels,
-		},
-		Spec: corev1.ServiceSpecArgs{
-			Type: pulumi.String("LoadBalancer"),
-			Ports: corev1.ServicePortArray{
-				corev1.ServicePortArgs{
-					Name: pulumi.String("web"),
-					Port: pulumi.Int(80),
-				},
-				corev1.ServicePortArgs{
-					Name: pulumi.String("websecure"),
-					Port: pulumi.Int(443),
-				},
+			"globalArguments": pulumi.StringArray{}, // disable check version
+			"additionalArguments": pulumi.StringArray{
+				pulumi.String("--api.insecure=true"), // enable dashboard on port 8080
 			},
-			Selector: traefikLabels,
-			// ExternalIPs: pulumi.ToStringArray([]string{
-			// 	"10.17.41.120",
-			// }),
-			// LoadBalancerIP: pulumi.String("10.17.41.120"), // TEST, must be configured by metallb
-		},
-	}, pulumi.Parent(tfk))
-	if err != nil {
-		return nil, err
-	}
-	_, err = corev1.NewService(ctx, "traefik-dashboard-service", &corev1.ServiceArgs{
-		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.String("traefik-dashboard-service"),
-			Namespace: args.Namespace,
-			Labels:    traefikLabels,
-		},
-		Spec: corev1.ServiceSpecArgs{
-			Type: pulumi.String("NodePort"),
-			Ports: corev1.ServicePortArray{
-				corev1.ServicePortArgs{
-					Name:     pulumi.String("dashboard"),
-					Port:     pulumi.Int(8080),
-					NodePort: pulumi.Int(30080),
-				},
-			},
-			Selector: traefikLabels,
 		},
 	}, pulumi.Parent(tfk))
 	if err != nil {
