@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"os"
 
-	"github.com/ctfer-io/ctfer/internal"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	helmv4 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v4"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -24,8 +23,8 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 	chartUrl := pulumi.String("oci://ghcr.io/traefik/helm/traefik").ToStringOutput()
 
 	// offline chart url
-	if internal.GetConfig().ChartsRepository != "" {
-		chartUrl = pulumi.Sprintf("%s/traefik", internal.GetConfig().ChartsRepository)
+	if args.ChartsRepository != "" {
+		chartUrl = pulumi.Sprintf("%s/traefik", args.ChartsRepository)
 	}
 
 	// Regsiter the Component Resource
@@ -47,7 +46,12 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 		SkipCrds:  pulumi.Bool(true), // we do not use crds for now
 		Values: pulumi.Map{
 			"image": pulumi.Map{
-				"registry":   internal.GetConfig().ImagesRepository,
+				"registry": args.Registry.ToStringOutput().ApplyT(func(repo string) *string {
+					if repo != "" {
+						return &repo
+					}
+					return nil
+				}),
 				"repository": pulumi.String("library/traefik"),
 			},
 			"deployment": pulumi.Map{
@@ -110,5 +114,9 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 }
 
 type TraefikArgs struct {
-	Namespace pulumi.String
+	// Namespace to deploy to.
+	Namespace        pulumi.String
+	ChartsRepository pulumi.String
+	ChartVersion     pulumi.String
+	Registry         pulumi.String
 }

@@ -13,13 +13,16 @@ func main() {
 		internal.InitConfig(ctx)
 
 		_, err = components.NewTraefik(ctx, ctx.Project(), &components.TraefikArgs{
-			Namespace: pulumi.String("ctfer"),
+			Namespace:        internal.GetConfig().Namespace,
+			ChartsRepository: internal.GetConfig().ChartsRepository,
+			ChartVersion:     pulumi.String("35.2.0"),
+			Registry:         internal.GetConfig().ImagesRepository,
 		})
 		if err != nil {
 			return err
 		}
 
-		ctfer, err := components.NewCTFer(ctx, ctx.Stack())
+		ctfer, err := internal.NewCTFer(ctx, ctx.Stack())
 		if err != nil {
 			return err
 		}

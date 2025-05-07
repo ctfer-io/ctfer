@@ -1,7 +1,6 @@
 package components
 
 import (
-	"github.com/ctfer-io/ctfer/internal"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -10,9 +9,9 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-// CTFer is a pulumi Component that deploy a pre-configured CTFd stack
+// CTFd is a pulumi Component that deploy a pre-configured CTFd stack
 // in an on-premise K8s cluster with Traefik as Ingress Controller.
-type CTFer struct {
+type CTFd struct {
 	pulumi.ResourceState
 
 	// URL contains the CTFd's URL once provided.
@@ -20,61 +19,27 @@ type CTFer struct {
 }
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
-func NewCTFer(ctx *pulumi.Context, name string, opts ...pulumi.ResourceOption) (*CTFer, error) {
-	ctfer := &CTFer{}
+func NewCTFd(ctx *pulumi.Context, name string, args *CTFdArgs, opts ...pulumi.ResourceOption) (*CTFd, error) {
+	ctfd := &CTFd{}
 
 	// Register the Component Resource
-	err := ctx.RegisterComponentResource("ctfer:l4:CTFer", name, ctfer, opts...)
+	err := ctx.RegisterComponentResource("ctfer:l4:CTFd", name, ctfd, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	// Provision K8s resources
-	url, err := ctfer.provisionK8s(ctx)
+	url, err := ctfd.provisionK8s(ctx, args)
 	if err != nil {
 		return nil, err
 	}
-	ctfer.URL = url
+	ctfd.URL = url
 
-	return ctfer, nil
+	return ctfd, nil
 }
 
 // ProvisionK8s setup the K8s infrastructure needed
-func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, error) {
-	// Create CTF's namespace
-	ns := internal.GetConfig().Namespace
-	_, err := corev1.NewNamespace(ctx, "ctfer-ns", &corev1.NamespaceArgs{
-		Metadata: metav1.ObjectMetaArgs{
-			Labels: pulumi.StringMap{
-				"ctfer.io/app-name": pulumi.String("ctfd"),
-				"ctfer.io/part-of":  pulumi.String("ctfer"),
-			},
-			Name: ns,
-		},
-	}, pulumi.Parent(ctfer))
-	if err != nil {
-		return pulumi.StringOutput{}, err
-	}
-
-	// Deploy HA MariaDB
-	// TODO scale up to >=3
-	// FIXME when scaled to 3, ctfd replicas errors
-	mdb, err := NewMariaDB(ctx, "mariadb-ctfd", &MariaDBArgs{
-		Namespace: ns,
-	}, pulumi.Parent(ctfer))
-	if err != nil {
-		return pulumi.StringOutput{}, err
-	}
-
-	// Deploy Redis
-	// TODO scale up to >=3
-	// FIXME when scaled to 3, ctfd replicas errors
-	rd, err := NewRedis(ctx, "redis-ctfd", &RedisArgs{
-		Namespace: ns,
-	}, pulumi.Parent(ctfer))
-	if err != nil {
-		return pulumi.StringOutput{}, err
-	}
+func (ctfer *CTFd) provisionK8s(ctx *pulumi.Context, args *CTFdArgs) (pulumi.StringOutput, error) {
 
 	// Deploy CTFd
 	ctfdLabels := pulumi.StringMap{
@@ -90,7 +55,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 	_, err = corev1.NewSecret(ctx, "ctfd-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Name:      pulumi.String("ctfd-secret"),
-			Namespace: ns,
+			Namespace: args.Namespace,
 			Labels:    ctfdLabels,
 		},
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
@@ -104,7 +69,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 	_, err = corev1.NewPersistentVolumeClaim(ctx, "ctfd-pvc", &corev1.PersistentVolumeClaimArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Name:      pulumi.String("ctfd-pvc"),
-			Namespace: ns,
+			Namespace: args.Namespace,
 			Labels:    ctfdLabels,
 		},
 		Spec: corev1.PersistentVolumeClaimSpecArgs{
@@ -123,10 +88,15 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 		return pulumi.StringOutput{}, err
 	}
 
+	image := args.Image
+	if args.Registry != "" {
+		image = args.Registry + "/" + args.Image
+	}
+
 	_, err = appsv1.NewStatefulSet(ctx, "ctfd-sts", &appsv1.StatefulSetArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Name:      pulumi.String("ctfd-sts"),
-			Namespace: ns,
+			Namespace: args.Namespace,
 			Labels:    ctfdLabels,
 		},
 		Spec: appsv1.StatefulSetSpecArgs{
@@ -136,20 +106,20 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 			Replicas: pulumi.Int(3),
 			Template: &corev1.PodTemplateSpecArgs{
 				Metadata: &metav1.ObjectMetaArgs{
-					Namespace: ns,
+					Namespace: args.Namespace,
 					Labels:    ctfdLabels,
 				},
 				Spec: &corev1.PodSpecArgs{
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
 							Name:  pulumi.String("ctfd"),
-							Image: pulumi.String(internal.GetImage(string(internal.GetConfig().CtfdImage))),
+							Image: image,
 							Env: corev1.EnvVarArray{
 								corev1.EnvVarArgs{
 									Name: pulumi.String("DATABASE_URL"),
 									ValueFrom: corev1.EnvVarSourceArgs{
 										SecretKeyRef: corev1.SecretKeySelectorArgs{
-											Name: mdb.SecretName,
+											Name: args.MariaDBSecretName,
 											Key:  pulumi.String("mariadb-url"),
 										},
 									},
@@ -158,7 +128,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 									Name: pulumi.String("REDIS_URL"),
 									ValueFrom: corev1.EnvVarSourceArgs{
 										SecretKeyRef: corev1.SecretKeySelectorArgs{
-											Name: rd.SecretName,
+											Name: args.RedisSecretName,
 											Key:  pulumi.String("redis-url"),
 										},
 									},
@@ -241,7 +211,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 				},
 			},
 		},
-	}, pulumi.Parent(ctfer), pulumi.DependsOn([]pulumi.Resource{mdb, rd}))
+	}, pulumi.Parent(ctfer))
 	if err != nil {
 		return pulumi.StringOutput{}, err
 	}
@@ -251,7 +221,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 		Metadata: metav1.ObjectMetaArgs{
 			Labels:    ctfdLabels,
 			Name:      pulumi.String("ctfd-svc"),
-			Namespace: ns,
+			Namespace: args.Namespace,
 		},
 		Spec: &corev1.ServiceSpecArgs{
 			Selector: ctfdLabels,
@@ -272,7 +242,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 		Metadata: metav1.ObjectMetaArgs{
 			Labels:    ctfdLabels,
 			Name:      pulumi.String("ctfd-ingress"),
-			Namespace: ns,
+			Namespace: args.Namespace,
 			Annotations: pulumi.ToStringMap(map[string]string{
 				"traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
 				"pulumi.com/skipAwait":                             "true",
@@ -281,7 +251,7 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 		Spec: netwv1.IngressSpecArgs{
 			Rules: netwv1.IngressRuleArray{
 				netwv1.IngressRuleArgs{
-					Host: internal.GetConfig().Hostname,
+					Host: args.Hostname,
 					Http: netwv1.HTTPIngressRuleValueArgs{
 						Paths: netwv1.HTTPIngressPathArray{
 							netwv1.HTTPIngressPathArgs{
@@ -314,12 +284,17 @@ func (ctfer *CTFer) provisionK8s(ctx *pulumi.Context) (pulumi.StringOutput, erro
 		return pulumi.StringOutput{}, err
 	}
 
-	return ing.Status.ApplyT(func(status *netwv1.IngressStatus) string {
-		// ingress := status.LoadBalancer.Ingress[0]
-		// if ingress.Hostname != nil {
-		// 	return fmt.Sprintf("http://%s", *ingress.Hostname)
-		// }
-		// return fmt.Sprintf("http://%s", *ingress.Ip)
-		return "http://ctfd.dev1.ctfer-io.lab"
+	return ing.Spec.ApplyT(func(spec netwv1.IngressSpec) string {
+		return *spec.Rules[0].Host
 	}).(pulumi.StringOutput), nil
+}
+
+type CTFdArgs struct {
+	// Namespace to deploy to.
+	Namespace         pulumi.String
+	RedisSecretName   pulumi.StringInput
+	MariaDBSecretName pulumi.StringInput
+	Image             pulumi.String
+	Registry          pulumi.String
+	Hostname          pulumi.String
 }

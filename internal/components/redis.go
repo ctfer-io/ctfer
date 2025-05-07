@@ -1,7 +1,6 @@
 package components
 
 import (
-	"github.com/ctfer-io/ctfer/internal"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	helmv4 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v4"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -24,8 +23,8 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 	chartUrl := pulumi.String("oci://registry-1.docker.io/bitnamicharts/redis").ToStringOutput()
 
 	// offline chart url
-	if internal.GetConfig().ChartsRepository != "" {
-		chartUrl = pulumi.Sprintf("%s/redis", internal.GetConfig().ChartsRepository)
+	if args.ChartsRepository != "" {
+		chartUrl = pulumi.Sprintf("%s/redis", args.ChartsRepository)
 	}
 
 	// Register the Component Resource
@@ -72,7 +71,7 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 		Version:   pulumi.String("20.13.4"),
 		Chart:     chartUrl,
 		Values: pulumi.Map{
-			"global": internal.GetConfig().ImagesRepository.ToStringOutput().ApplyT(func(repo string) map[string]any {
+			"global": args.Registry.ToStringOutput().ApplyT(func(repo string) map[string]any {
 				mp := map[string]any{}
 				mp["imageRegistry"] = repo
 
@@ -122,5 +121,8 @@ func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.
 
 type RedisArgs struct {
 	// Namespace to deploy to.
-	Namespace pulumi.String
+	Namespace        pulumi.String
+	ChartsRepository pulumi.String
+	ChartVersion     pulumi.String
+	Registry         pulumi.String
 }
