@@ -5,8 +5,6 @@ import (
 
 	"github.com/ctfer-io/ctfer/services/components"
 	"github.com/hashicorp/go-multierror"
-	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
-	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
@@ -15,7 +13,6 @@ import (
 type CTFer struct {
 	pulumi.ResourceState
 
-	ns    *corev1.Namespace
 	maria *components.MariaDB
 	redis *components.Redis
 	ctfd  *components.CTFd
@@ -91,20 +88,6 @@ func (ctfer *CTFer) check(args *CTFerArgs) error {
 }
 
 func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulumi.ResourceOption) (err error) {
-	// Create CTF's namespace
-	ctfer.ns, err = corev1.NewNamespace(ctx, "ctfer-ns", &corev1.NamespaceArgs{
-		Metadata: metav1.ObjectMetaArgs{
-			Labels: pulumi.StringMap{
-				"ctfer.io/app-name": pulumi.String("ctfd"),
-				"ctfer.io/part-of":  pulumi.String("ctfer"),
-			},
-			Name: args.Namespace,
-		},
-	}, opts...)
-	if err != nil {
-		return
-	}
-
 	// Deploy HA MariaDB
 	// TODO scale up to >=3
 	// FIXME when scaled to 3, ctfd replicas errors
@@ -132,7 +115,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 	}
 
 	ctfer.ctfd, err = components.NewCTFd(ctx, "platform", &components.CTFdArgs{
-		Namespace:         ctfer.ns.Metadata.Name().Elem(),
+		Namespace:         args.Namespace,
 		MariaDBSecretName: ctfer.maria.SecretName,
 		RedisSecretName:   ctfer.redis.SecretName,
 		Image:             args.CTFdImage,

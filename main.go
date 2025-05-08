@@ -5,6 +5,8 @@ import (
 
 	"github.com/ctfer-io/ctfer/services"
 	"github.com/ctfer-io/ctfer/services/components"
+	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
+	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -20,6 +22,19 @@ func main() {
 			Registry:         pulumi.String(cfg.ImagesRepository),
 		})
 		if err != nil {
+			return err
+		}
+
+		// Create CTF's namespace
+		if _, err = corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
+			Metadata: metav1.ObjectMetaArgs{
+				Labels: pulumi.StringMap{
+					"ctfer.io/app-name": pulumi.String("ctfd"),
+					"ctfer.io/part-of":  pulumi.String("ctfer"),
+				},
+				Name: pulumi.String(cfg.Namespace),
+			},
+		}); err != nil {
 			return err
 		}
 
