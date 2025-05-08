@@ -1,6 +1,10 @@
 package components
 
 import (
+	"strings"
+	"sync"
+
+	"github.com/hashicorp/go-multierror"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -14,63 +18,114 @@ import (
 type CTFd struct {
 	pulumi.ResourceState
 
+	secRand *random.RandomId
+	sec     *corev1.Secret
+	pvc     *corev1.PersistentVolumeClaim
+	sts     *appsv1.StatefulSet
+	svc     *corev1.Service
+	ing     *netwv1.Ingress
+
 	// URL contains the CTFd's URL once provided.
 	URL pulumi.StringOutput
+}
+
+type CTFdArgs struct {
+	Namespace         pulumi.StringInput
+	RedisSecretName   pulumi.StringInput
+	MariaDBSecretName pulumi.StringInput
+	Image             pulumi.StringInput
+	Registry          pulumi.StringInput
+	Hostname          pulumi.StringInput
 }
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
 func NewCTFd(ctx *pulumi.Context, name string, args *CTFdArgs, opts ...pulumi.ResourceOption) (*CTFd, error) {
 	ctfd := &CTFd{}
-
-	// Register the Component Resource
-	err := ctx.RegisterComponentResource("ctfer:l4:CTFd", name, ctfd, opts...)
+	args = ctfd.defaults(args)
+	if err := ctfd.check(args); err != nil {
+		return nil, err
+	}
+	err := ctx.RegisterComponentResource("ctfer-io:ctfer:ctfd", name, ctfd, opts...)
 	if err != nil {
 		return nil, err
 	}
+	opts = append(opts, pulumi.Parent(ctfd))
 
-	// Provision K8s resources
-	url, err := ctfd.provisionK8s(ctx, args)
-	if err != nil {
+	if err := ctfd.provision(ctx, args, opts...); err != nil {
 		return nil, err
 	}
-	ctfd.URL = url
+	if err := ctfd.outputs(ctx); err != nil {
+		return nil, err
+	}
 
 	return ctfd, nil
 }
 
-// ProvisionK8s setup the K8s infrastructure needed
-func (ctfer *CTFd) provisionK8s(ctx *pulumi.Context, args *CTFdArgs) (pulumi.StringOutput, error) {
-
-	// Deploy CTFd
-	ctfdLabels := pulumi.StringMap{
-		"ctfer/infra": pulumi.String("ctfd"),
+func (ctfd *CTFd) defaults(args *CTFdArgs) *CTFdArgs {
+	if args == nil {
+		args = &CTFdArgs{}
 	}
+	return args
+}
 
-	ctfdSecret, err := random.NewRandomId(ctx, "ctfd-secret", &random.RandomIdArgs{
+func (ctfd *CTFd) check(args *CTFdArgs) error {
+	checks := 0
+	wg := &sync.WaitGroup{}
+	wg.Add(checks)
+	cerr := make(chan error, checks)
+
+	// TODO perform validation checks
+	// smth.ApplyT(func(abc def) ghi {
+	//     defer wg.Done()
+	//
+	//     ... the actual test
+	//     if err != nil {
+	//         cerr <- err
+	//         return
+	//     }
+	// })
+
+	wg.Wait()
+	close(cerr)
+
+	var merr error
+	for err := range cerr {
+		merr = multierror.Append(merr, err)
+	}
+	return merr
+}
+
+func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.ResourceOption) (err error) {
+	ctfd.secRand, err = random.NewRandomId(ctx, "ctfd-secret-random", &random.RandomIdArgs{
 		ByteLength: pulumi.Int(64),
-	}, pulumi.Parent(ctfer))
+	}, opts...)
 	if err != nil {
-		return pulumi.StringOutput{}, err
+		return
 	}
-	_, err = corev1.NewSecret(ctx, "ctfd-secret", &corev1.SecretArgs{
+
+	ctfd.sec, err = corev1.NewSecret(ctx, "ctfd-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Name:      pulumi.String("ctfd-secret"),
 			Namespace: args.Namespace,
-			Labels:    ctfdLabels,
+			Labels: pulumi.StringMap{
+				"ctfer/infra": pulumi.String("ctfd"),
+			},
 		},
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
-			"secret_key": ctfdSecret.B64Std,
+			"secret_key": ctfd.secRand.B64Std,
 		}),
-	}, pulumi.Parent(ctfer))
+	}, opts...)
 	if err != nil {
-		return pulumi.StringOutput{}, err
+		return
 	}
 
-	_, err = corev1.NewPersistentVolumeClaim(ctx, "ctfd-pvc", &corev1.PersistentVolumeClaimArgs{
+	ctfd.pvc, err = corev1.NewPersistentVolumeClaim(ctx, "ctfd-pvc", &corev1.PersistentVolumeClaimArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Name:      pulumi.String("ctfd-pvc"),
 			Namespace: args.Namespace,
-			Labels:    ctfdLabels,
+			Labels: pulumi.StringMap{
+				"ctfer/infra": pulumi.String("ctfd"),
+			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpecArgs{
 			StorageClassName: pulumi.String("longhorn"),
@@ -83,37 +138,44 @@ func (ctfer *CTFd) provisionK8s(ctx *pulumi.Context, args *CTFdArgs) (pulumi.Str
 				}),
 			},
 		},
-	}, pulumi.Parent(ctfer))
+	}, opts...)
 	if err != nil {
-		return pulumi.StringOutput{}, err
+		return
 	}
 
-	image := args.Image
-	if args.Registry != "" {
-		image = args.Registry + "/" + args.Image
-	}
-
-	_, err = appsv1.NewStatefulSet(ctx, "ctfd-sts", &appsv1.StatefulSetArgs{
+	ctfd.sts, err = appsv1.NewStatefulSet(ctx, "ctfd-sts", &appsv1.StatefulSetArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Name:      pulumi.String("ctfd-sts"),
 			Namespace: args.Namespace,
-			Labels:    ctfdLabels,
+			Labels: pulumi.StringMap{
+				"ctfer/infra": pulumi.String("ctfd"),
+			},
 		},
 		Spec: appsv1.StatefulSetSpecArgs{
 			Selector: metav1.LabelSelectorArgs{
-				MatchLabels: ctfdLabels,
+				MatchLabels: pulumi.StringMap{
+					"ctfer/infra": pulumi.String("ctfd"),
+				},
 			},
 			Replicas: pulumi.Int(3),
 			Template: &corev1.PodTemplateSpecArgs{
 				Metadata: &metav1.ObjectMetaArgs{
 					Namespace: args.Namespace,
-					Labels:    ctfdLabels,
+					Labels: pulumi.StringMap{
+						"ctfer/infra": pulumi.String("ctfd"),
+					},
 				},
 				Spec: &corev1.PodSpecArgs{
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
-							Name:  pulumi.String("ctfd"),
-							Image: image,
+							Name: pulumi.String("ctfd"),
+							Image: pulumi.All(args.Registry, args.Image).ApplyT(func(all []any) string {
+								registry := all[0].(string)
+								if registry != "" && !strings.HasSuffix(registry, "/") {
+									registry += "/"
+								}
+								return registry + all[1].(string)
+							}).(pulumi.StringOutput),
 							Env: corev1.EnvVarArray{
 								corev1.EnvVarArgs{
 									Name: pulumi.String("DATABASE_URL"),
@@ -211,20 +273,24 @@ func (ctfer *CTFd) provisionK8s(ctx *pulumi.Context, args *CTFdArgs) (pulumi.Str
 				},
 			},
 		},
-	}, pulumi.Parent(ctfer))
+	}, opts...)
 	if err != nil {
-		return pulumi.StringOutput{}, err
+		return
 	}
 
 	// Export Service or Ingress with its URL
-	_, err = corev1.NewService(ctx, "ctfd-svc", &corev1.ServiceArgs{
+	ctfd.svc, err = corev1.NewService(ctx, "ctfd-svc", &corev1.ServiceArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Labels:    ctfdLabels,
+			Labels: pulumi.StringMap{
+				"ctfer/infra": pulumi.String("ctfd"),
+			},
 			Name:      pulumi.String("ctfd-svc"),
 			Namespace: args.Namespace,
 		},
 		Spec: &corev1.ServiceSpecArgs{
-			Selector: ctfdLabels,
+			Selector: pulumi.StringMap{
+				"ctfer/infra": pulumi.String("ctfd"),
+			},
 			Ports: corev1.ServicePortArray{
 				corev1.ServicePortArgs{
 					TargetPort: pulumi.Int(8000),
@@ -233,14 +299,16 @@ func (ctfer *CTFd) provisionK8s(ctx *pulumi.Context, args *CTFdArgs) (pulumi.Str
 				},
 			},
 		},
-	}, pulumi.Parent(ctfer))
+	}, opts...)
 	if err != nil {
-		return pulumi.StringOutput{}, err
+		return
 	}
 
-	ing, err := netwv1.NewIngress(ctx, "ctfd-ingress", &netwv1.IngressArgs{
+	ctfd.ing, err = netwv1.NewIngress(ctx, "ctfd-ingress", &netwv1.IngressArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Labels:    ctfdLabels,
+			Labels: pulumi.StringMap{
+				"ctfer/infra": pulumi.String("ctfd"),
+			},
 			Name:      pulumi.String("ctfd-ingress"),
 			Namespace: args.Namespace,
 			Annotations: pulumi.ToStringMap(map[string]string{
@@ -279,22 +347,20 @@ func (ctfer *CTFd) provisionK8s(ctx *pulumi.Context, args *CTFdArgs) (pulumi.Str
 				},
 			},
 		},
-	}, pulumi.Parent(ctfer))
+	}, opts...)
 	if err != nil {
-		return pulumi.StringOutput{}, err
+		return
 	}
 
-	return ing.Spec.ApplyT(func(spec netwv1.IngressSpec) string {
-		return *spec.Rules[0].Host
-	}).(pulumi.StringOutput), nil
+	return
 }
 
-type CTFdArgs struct {
-	// Namespace to deploy to.
-	Namespace         pulumi.String
-	RedisSecretName   pulumi.StringInput
-	MariaDBSecretName pulumi.StringInput
-	Image             pulumi.String
-	Registry          pulumi.String
-	Hostname          pulumi.String
+func (ctfd *CTFd) outputs(ctx *pulumi.Context) error {
+	ctfd.URL = ctfd.ing.Spec.ApplyT(func(spec netwv1.IngressSpec) string {
+		return *spec.Rules[0].Host
+	}).(pulumi.StringOutput)
+
+	return ctx.RegisterResourceOutputs(ctfd, pulumi.Map{
+		"url": ctfd.URL,
+	})
 }

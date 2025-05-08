@@ -3,46 +3,107 @@ package components
 import (
 	"encoding/base64"
 	"os"
+	"sync"
 
+	"github.com/hashicorp/go-multierror"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	helmv4 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/helm/v4"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
+const (
+	defaultTraefikChartURL = "oci://ghcr.io/traefik/helm/traefik"
+)
+
 type Traefik struct {
 	pulumi.ResourceState
+
+	chart *helmv4.Chart
+	sec   *corev1.Secret
 }
 
-var _ pulumi.ComponentResource = (*Traefik)(nil)
+type TraefikArgs struct {
+	Namespace        pulumi.StringInput
+	ChartsRepository pulumi.StringInput
+	ChartVersion     pulumi.StringInput
+	Registry         pulumi.StringInput
+
+	chartUrl pulumi.StringOutput
+}
 
 func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pulumi.ResourceOption) (*Traefik, error) {
 	tfk := &Traefik{}
-
-	// remote chart url
-	chartUrl := pulumi.String("oci://ghcr.io/traefik/helm/traefik").ToStringOutput()
-
-	// offline chart url
-	if args.ChartsRepository != "" {
-		chartUrl = pulumi.Sprintf("%s/traefik", args.ChartsRepository)
+	args = tfk.defaults(args)
+	if err := tfk.check(args); err != nil {
+		return nil, err
 	}
-
-	// Regsiter the Component Resource
-	err := ctx.RegisterComponentResource("ctfer:l4:Traefik", name, tfk, opts...)
+	err := ctx.RegisterComponentResource("ctfer-io:ctfer:traefik", name, tfk, opts...)
 	if err != nil {
 		return nil, err
 	}
+	opts = append(opts, pulumi.Parent(tfk))
 
-	// Provision K8s resources (https://doc.traefik.io/traefik/getting-started/quick-start-with-kubernetes/)
+	if err := tfk.provision(ctx, args, opts...); err != nil {
+		return nil, err
+	}
+	if err := tfk.outputs(ctx); err != nil {
+		return nil, err
+	}
+
+	return tfk, nil
+}
+
+func (tfk *Traefik) defaults(args *TraefikArgs) *TraefikArgs {
+	if args == nil {
+		args = &TraefikArgs{}
+	}
+
+	args.chartUrl = pulumi.String(defaultTraefikChartURL).ToStringOutput()
+	if args.ChartsRepository != nil {
+		args.chartUrl = pulumi.Sprintf("%s/traefik", args.ChartsRepository)
+	}
+
+	return args
+}
+
+func (tfk *Traefik) check(_ *TraefikArgs) error {
+	checks := 0
+	wg := &sync.WaitGroup{}
+	wg.Add(checks)
+	cerr := make(chan error, checks)
+
+	// TODO perform validation checks
+	// smth.ApplyT(func(abc def) ghi {
+	//     defer wg.Done()
+	//
+	//     ... the actual test
+	//     if err != nil {
+	//         cerr <- err
+	//         return
+	//     }
+	// })
+
+	wg.Wait()
+	close(cerr)
+
+	var merr error
+	for err := range cerr {
+		merr = multierror.Append(merr, err)
+	}
+	return merr
+}
+
+func (tfk *Traefik) provision(ctx *pulumi.Context, args *TraefikArgs, opts ...pulumi.ResourceOption) (err error) {
 	traefikLabels := pulumi.StringMap{
 		"ctfer.io/app-name": pulumi.String("traefik"),
 		"ctfer.io/part-of":  pulumi.String("ctfer"),
 	}
 
-	_, err = helmv4.NewChart(ctx, "traefik", &helmv4.ChartArgs{
+	tfk.chart, err = helmv4.NewChart(ctx, "traefik", &helmv4.ChartArgs{
 		Namespace: args.Namespace,
 		Version:   pulumi.String("35.2.0"),
-		Chart:     chartUrl,
+		Chart:     args.chartUrl,
 		SkipCrds:  pulumi.Bool(true), // we do not use crds for now
 		Values: pulumi.Map{
 			"image": pulumi.Map{
@@ -82,22 +143,22 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 				pulumi.String("--api.insecure=true"), // enable dashboard on port 8080
 			},
 		},
-	}, pulumi.Parent(tfk))
+	}, opts...)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// Create TLS secret
 	// TODO make it configurable
 	tlsCrt, err := os.ReadFile("certs/ctfd.crt")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	tlsKey, err := os.ReadFile("certs/ctfd.key")
 	if err != nil {
-		return nil, err
+		return err
 	}
-	_, err = corev1.NewSecret(ctx, "domain-tls-secret", &corev1.SecretArgs{
+	tfk.sec, err = corev1.NewSecret(ctx, "domain-tls-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Name:      pulumi.String("domain-tls-secret"),
 			Namespace: args.Namespace,
@@ -106,17 +167,14 @@ func NewTraefik(ctx *pulumi.Context, name string, args *TraefikArgs, opts ...pul
 			"tls.crt": base64.StdEncoding.EncodeToString(tlsCrt),
 			"tls.key": base64.StdEncoding.EncodeToString(tlsKey),
 		}),
-	}, pulumi.Parent(tfk))
+	}, opts...)
 	if err != nil {
-		return nil, err
+		return
 	}
-	return tfk, nil
+
+	return
 }
 
-type TraefikArgs struct {
-	// Namespace to deploy to.
-	Namespace        pulumi.String
-	ChartsRepository pulumi.String
-	ChartVersion     pulumi.String
-	Registry         pulumi.String
+func (tfk *Traefik) outputs(ctx *pulumi.Context) error {
+	return ctx.RegisterResourceOutputs(tfk, pulumi.Map{})
 }
