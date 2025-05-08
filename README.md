@@ -23,13 +23,12 @@ pulumi config set charts-repository oci://registry.dev1.ctfer-io.lab/hauler
 If you want to use custom images of ctfd (i.e with your plugin/themes)
 ```bash
 # Use custom images
-pulumi config set ctfd-image ctferio/ctfd:3.7.7-0.3.0-rc1
+pulumi config set ctfd-image ctferio/ctfd:3.7.7-0.3.0
 ```
 
 Deploy ctfer 
 ```bash
 # Install local-path for mariadb
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml
 pulumi config set hostname ctfd.dev1.ctfer-io.lab
 pulumi up 
 ```
