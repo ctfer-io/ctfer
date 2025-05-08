@@ -1,6 +1,7 @@
 package components
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
@@ -18,8 +19,8 @@ const (
 type MariaDB struct {
 	pulumi.ResourceState
 
-	masterUser pulumi.StringOutput
 	masterPass *random.RandomPassword
+	userName   pulumi.StringOutput
 	userPass   *random.RandomPassword
 	repPass    *random.RandomPassword
 	sec        *corev1.Secret
@@ -68,7 +69,12 @@ func (mdb *MariaDB) defaults(args *MariaDBArgs) *MariaDBArgs {
 
 	args.chartUrl = pulumi.String(defaultMdbChartURL).ToStringOutput()
 	if args.ChartsRepository != nil {
-		args.chartUrl = pulumi.Sprintf("%s/mariadb", args.ChartsRepository)
+		args.chartUrl = args.ChartsRepository.ToStringOutput().ApplyT(func(chartRepository string) string {
+			if chartRepository == "" {
+				return defaultMdbChartURL
+			}
+			return fmt.Sprintf("%s/mariadb", chartRepository)
+		}).(pulumi.StringOutput)
 	}
 
 	return args
@@ -108,7 +114,6 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 	}
 
 	// => Secrets
-	mdb.masterUser = pulumi.String("ctfer").ToStringOutput()
 	mdb.masterPass, err = random.NewRandomPassword(ctx, "masterPass-secret", &random.RandomPasswordArgs{
 		Length:  pulumi.Int(32),
 		Special: pulumi.BoolPtr(false),
@@ -117,6 +122,7 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 		return
 	}
 
+	mdb.userName = pulumi.String("ctfer").ToStringOutput()
 	mdb.userPass, err = random.NewRandomPassword(ctx, "userPass-secret", &random.RandomPasswordArgs{
 		Length:  pulumi.Int(32),
 		Special: pulumi.BoolPtr(false),
@@ -144,7 +150,7 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 			"mariadb-root-password":        mdb.masterPass.Result,
 			"mariadb-password":             mdb.userPass.Result,
 			"mariadb-replication-password": mdb.repPass.Result,
-			"mariadb-url":                  pulumi.Sprintf("mysql+pymysql://%s:%s@mariadb-headless/ctfd", mdb.masterPass.Result, mdb.userPass.Result),
+			"mariadb-url":                  pulumi.Sprintf("mysql+pymysql://%s:%s@mariadb-headless/ctfd", mdb.userName, mdb.userPass.Result),
 		}),
 	}, opts...)
 	if err != nil {
@@ -169,7 +175,7 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 				return mp
 			}).(pulumi.MapOutput),
 			"auth": pulumi.Map{
-				"username":       mdb.masterUser,
+				"username":       mdb.userName,
 				"database":       pulumi.String("ctfd"),
 				"existingSecret": mdb.sec.Metadata.Name(), // use secret with generated passwords above
 			},

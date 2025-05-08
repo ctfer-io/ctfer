@@ -1,6 +1,7 @@
 package components
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
@@ -63,7 +64,12 @@ func (rd *Redis) defaults(args *RedisArgs) *RedisArgs {
 
 	args.chartUrl = pulumi.String(defaultRedisChartURL).ToStringOutput()
 	if args.ChartsRepository != nil {
-		args.chartUrl = pulumi.Sprintf("%s/redis", args.ChartsRepository)
+		args.chartUrl = args.ChartsRepository.ToStringOutput().ApplyT(func(chartRepository string) string {
+			if chartRepository == "" {
+				return defaultRedisChartURL
+			}
+			return fmt.Sprintf("%s/redis", chartRepository)
+		}).(pulumi.StringOutput)
 	}
 
 	return args

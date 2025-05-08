@@ -2,6 +2,7 @@ package components
 
 import (
 	"encoding/base64"
+	"fmt"
 	"os"
 	"sync"
 
@@ -61,7 +62,12 @@ func (tfk *Traefik) defaults(args *TraefikArgs) *TraefikArgs {
 
 	args.chartUrl = pulumi.String(defaultTraefikChartURL).ToStringOutput()
 	if args.ChartsRepository != nil {
-		args.chartUrl = pulumi.Sprintf("%s/traefik", args.ChartsRepository)
+		args.chartUrl = args.ChartsRepository.ToStringOutput().ApplyT(func(chartRepository string) string {
+			if chartRepository == "" {
+				return defaultTraefikChartURL
+			}
+			return fmt.Sprintf("%s/traefik", chartRepository)
+		}).(pulumi.StringOutput)
 	}
 
 	return args
