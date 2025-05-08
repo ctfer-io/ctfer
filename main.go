@@ -58,7 +58,7 @@ func InitConfig(ctx *pulumi.Context) *Config {
 		Hostname:         def(config.Get("hostname"), "localhost"),
 		ImagesRepository: def(config.Get("images-repository"), ""),          // registry.dev1.ctfer-io.lab
 		ChartsRepository: def(config.Get("charts-repository"), ""),          // oci://registry.dev1.ctfer-io.lab
-		CTFdImage:        def(config.Get("ctfd-image"), "ctfd/ctfd:latest"), // ctferio/ctfd:3.7.7-0.3.0-rc1
+		CTFdImage:        def(config.Get("ctfd-image"), "ctfd/ctfd:latest"), // ctferio/ctfd:3.7.7-0.3.0
 	}
 }
 
