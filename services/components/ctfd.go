@@ -36,6 +36,7 @@ type CTFdArgs struct {
 	Image             pulumi.StringInput
 	Registry          pulumi.StringInput
 	Hostname          pulumi.StringInput
+	ChallManagerUrl   pulumi.StringInput
 }
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
@@ -143,6 +144,42 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		return
 	}
 
+	envs := corev1.EnvVarArray{
+		corev1.EnvVarArgs{
+			Name: pulumi.String("DATABASE_URL"),
+			ValueFrom: corev1.EnvVarSourceArgs{
+				SecretKeyRef: corev1.SecretKeySelectorArgs{
+					Name: args.MariaDBSecretName,
+					Key:  pulumi.String("mariadb-url"),
+				},
+			},
+		},
+		corev1.EnvVarArgs{
+			Name: pulumi.String("REDIS_URL"),
+			ValueFrom: corev1.EnvVarSourceArgs{
+				SecretKeyRef: corev1.SecretKeySelectorArgs{
+					Name: args.RedisSecretName,
+					Key:  pulumi.String("redis-url"),
+				},
+			},
+		},
+		corev1.EnvVarArgs{
+			Name:  pulumi.String("UPLOAD_FOLDER"), // contains scenario.zip
+			Value: pulumi.String("/var/uploads"),
+		},
+		corev1.EnvVarArgs{
+			Name:  pulumi.String("REVERSE_PROXY"),
+			Value: pulumi.String("2,2,2,2,2"),
+		},
+	}
+
+	if args.ChallManagerUrl != nil {
+		envs = append(envs, corev1.EnvVarArgs{
+			Name:  pulumi.String("PLUGIN_SETTINGS_CM_API_URL"),
+			Value: args.ChallManagerUrl,
+		})
+	}
+
 	ctfd.sts, err = appsv1.NewStatefulSet(ctx, "ctfd-sts", &appsv1.StatefulSetArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Name:      pulumi.String("ctfd-sts"),
@@ -176,34 +213,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 								}
 								return registry + all[1].(string)
 							}).(pulumi.StringOutput),
-							Env: corev1.EnvVarArray{
-								corev1.EnvVarArgs{
-									Name: pulumi.String("DATABASE_URL"),
-									ValueFrom: corev1.EnvVarSourceArgs{
-										SecretKeyRef: corev1.SecretKeySelectorArgs{
-											Name: args.MariaDBSecretName,
-											Key:  pulumi.String("mariadb-url"),
-										},
-									},
-								},
-								corev1.EnvVarArgs{
-									Name: pulumi.String("REDIS_URL"),
-									ValueFrom: corev1.EnvVarSourceArgs{
-										SecretKeyRef: corev1.SecretKeySelectorArgs{
-											Name: args.RedisSecretName,
-											Key:  pulumi.String("redis-url"),
-										},
-									},
-								},
-								corev1.EnvVarArgs{
-									Name:  pulumi.String("UPLOAD_FOLDER"), // contains scenario.zip
-									Value: pulumi.String("/var/uploads"),
-								},
-								corev1.EnvVarArgs{
-									Name:  pulumi.String("REVERSE_PROXY"),
-									Value: pulumi.String("2,2,2,2,2"),
-								},
-							},
+							Env: envs,
 							Ports: corev1.ContainerPortArray{
 								corev1.ContainerPortArgs{
 									ContainerPort: pulumi.Int(8000),

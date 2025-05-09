@@ -26,9 +26,14 @@ If you want to use custom images of ctfd (i.e with your plugin/themes)
 pulumi config set ctfd-image ctferio/ctfd:3.7.7-0.3.0
 ```
 
+If you want to configure the ChallManager URL
+```bash
+# Use custom images
+pulumi config set chall-manager-url http://chall-manager-svc.ctfer:8080/api/v1
+```
+
 Deploy ctfer 
 ```bash
-# Install local-path for mariadb
 pulumi config set hostname ctfd.dev1.ctfer-io.lab
 pulumi up 
 ```
