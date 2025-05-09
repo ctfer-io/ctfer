@@ -35,6 +35,7 @@ type CTFdArgs struct {
 	MariaDBSecretName pulumi.StringInput
 	Image             pulumi.StringInput
 	Registry          pulumi.StringInput
+	TLSSecretName     pulumi.StringInput
 	Hostname          pulumi.StringInput
 	ChallManagerUrl   pulumi.StringInput
 }
@@ -352,7 +353,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Tls: netwv1.IngressTLSArray{
 				netwv1.IngressTLSArgs{
 					// The TLS secret is defered to Traefik for TLS unpacking
-					SecretName: pulumi.String("domain-tls-secret"),
+					SecretName: args.TLSSecretName,
 				},
 			},
 		},

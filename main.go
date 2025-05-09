@@ -1,10 +1,11 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
+	"os"
 
 	"github.com/ctfer-io/ctfer/services"
-	"github.com/ctfer-io/ctfer/services/components"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -15,18 +16,8 @@ func main() {
 	pulumi.Run(func(ctx *pulumi.Context) (err error) {
 		cfg := InitConfig(ctx)
 
-		_, err = components.NewTraefik(ctx, ctx.Project(), &components.TraefikArgs{
-			Namespace:        pulumi.String(cfg.Namespace),
-			ChartsRepository: pulumi.String(cfg.ChartsRepository),
-			ChartVersion:     pulumi.String("35.2.0"),
-			Registry:         pulumi.String(cfg.ImagesRepository),
-		})
-		if err != nil {
-			return err
-		}
-
 		// Create CTF's namespace
-		if _, err = corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
+		if _, err := corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
 			Metadata: metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
 					"ctfer.io/app-name": pulumi.String("ctfd"),
@@ -38,10 +29,34 @@ func main() {
 			return err
 		}
 
+		// Create TLS secret for CTFd
+		tlsCrt, err := os.ReadFile(cfg.CrtPath)
+		if err != nil {
+			return err
+		}
+		tlsKey, err := os.ReadFile(cfg.KeyPath)
+		if err != nil {
+			return err
+		}
+		sec, err := corev1.NewSecret(ctx, "ctfd-tls-sec", &corev1.SecretArgs{
+			Metadata: metav1.ObjectMetaArgs{
+				Namespace: pulumi.String(cfg.Namespace),
+			},
+			Type: pulumi.String("kubernetes.io/tls"),
+			Data: pulumi.ToStringMap(map[string]string{
+				"tls.crt": base64.StdEncoding.EncodeToString(tlsCrt),
+				"tls.key": base64.StdEncoding.EncodeToString(tlsKey),
+			}),
+		})
+		if err != nil {
+			return
+		}
+
 		ctfer, err := services.NewCTFer(ctx, ctx.Stack(), &services.CTFerArgs{
 			Namespace:        pulumi.String(cfg.Namespace),
 			CTFdImage:        pulumi.String(cfg.CTFdImage),
 			Hostname:         pulumi.String(cfg.Hostname),
+			TLSSecretName:    sec.Metadata.Name().Elem(),
 			ChartsRepository: pulumi.String(cfg.ChartsRepository),
 			ImagesRepository: pulumi.String(cfg.ImagesRepository),
 			ChallManagerUrl:  pulumi.String(cfg.ChallManagerUrl),
@@ -66,6 +81,8 @@ type Config struct {
 	ChartsRepository string
 	CTFdImage        string
 	ChallManagerUrl  string
+	CrtPath          string
+	KeyPath          string
 }
 
 func InitConfig(ctx *pulumi.Context) *Config {
@@ -73,10 +90,12 @@ func InitConfig(ctx *pulumi.Context) *Config {
 	return &Config{
 		Namespace:        def(config.Get("namespace"), "ctfer"),
 		Hostname:         def(config.Get("hostname"), "localhost"),
-		ImagesRepository: def(config.Get("images-repository"), ""),          // registry.dev1.ctfer-io.lab
-		ChartsRepository: def(config.Get("charts-repository"), ""),          // oci://registry.dev1.ctfer-io.lab
+		ImagesRepository: config.Get("images-repository"),                   // registry.dev1.ctfer-io.lab
+		ChartsRepository: config.Get("charts-repository"),                   // oci://registry.dev1.ctfer-io.lab
 		CTFdImage:        def(config.Get("ctfd-image"), "ctfd/ctfd:latest"), // ctferio/ctfd:3.7.7-0.3.0
-		ChallManagerUrl:  def(config.Get("chall-manager-url"), ""),          // http://chall-manager-svc.ctfer:8080/api/v1
+		ChallManagerUrl:  config.Get("chall-manager-url"),                   // http://chall-manager-svc.ctfer:8080/api/v1
+		CrtPath:          def(config.Get("crt-path"), "certs/ctfd.crt"),
+		KeyPath:          def(config.Get("key-path"), "certs/ctfd.key"),
 	}
 }
 
