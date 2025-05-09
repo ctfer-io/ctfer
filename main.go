@@ -44,6 +44,7 @@ func main() {
 			Hostname:         pulumi.String(cfg.Hostname),
 			ChartsRepository: pulumi.String(cfg.ChartsRepository),
 			ImagesRepository: pulumi.String(cfg.ImagesRepository),
+			ChallManagerUrl:  pulumi.String(cfg.ChallManagerUrl),
 		})
 		if err != nil {
 			return err
@@ -64,6 +65,7 @@ type Config struct {
 	ImagesRepository string
 	ChartsRepository string
 	CTFdImage        string
+	ChallManagerUrl  string
 }
 
 func InitConfig(ctx *pulumi.Context) *Config {
@@ -74,6 +76,7 @@ func InitConfig(ctx *pulumi.Context) *Config {
 		ImagesRepository: def(config.Get("images-repository"), ""),          // registry.dev1.ctfer-io.lab
 		ChartsRepository: def(config.Get("charts-repository"), ""),          // oci://registry.dev1.ctfer-io.lab
 		CTFdImage:        def(config.Get("ctfd-image"), "ctfd/ctfd:latest"), // ctferio/ctfd:3.7.7-0.3.0
+		ChallManagerUrl:  def(config.Get("chall-manager-url"), ""),          // http://chall-manager-svc.ctfer:8080/api/v1
 	}
 }
 

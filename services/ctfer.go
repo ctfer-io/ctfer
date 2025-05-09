@@ -22,8 +22,9 @@ type CTFer struct {
 }
 
 type CTFerArgs struct {
-	Namespace pulumi.StringInput
-	CTFdImage pulumi.StringInput
+	Namespace       pulumi.StringInput
+	CTFdImage       pulumi.StringInput
+	ChallManagerUrl pulumi.StringInput
 
 	Hostname         pulumi.StringInput
 	ChartsRepository pulumi.StringInput
@@ -121,6 +122,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		Image:             args.CTFdImage,
 		Registry:          args.ImagesRepository,
 		Hostname:          args.Hostname,
+		ChallManagerUrl:   args.ChallManagerUrl,
 	}, append(opts, pulumi.DependsOn([]pulumi.Resource{
 		ctfer.maria,
 		ctfer.redis,
