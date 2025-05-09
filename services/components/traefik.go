@@ -143,6 +143,9 @@ func (tfk *Traefik) provision(ctx *pulumi.Context, args *TraefikArgs, opts ...pu
 						},
 					},
 				},
+				"websecure": pulumi.Map{
+					"asDefault": pulumi.Bool(true),
+				},
 			},
 			"globalArguments": pulumi.StringArray{}, // disable check version
 			"additionalArguments": pulumi.StringArray{
