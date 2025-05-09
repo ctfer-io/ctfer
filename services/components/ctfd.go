@@ -322,8 +322,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Name:      pulumi.String("ctfd-ingress"),
 			Namespace: args.Namespace,
 			Annotations: pulumi.ToStringMap(map[string]string{
-				"traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
-				"pulumi.com/skipAwait":                             "true",
+				"pulumi.com/skipAwait": "true",
 			}),
 		},
 		Spec: netwv1.IngressSpecArgs{
