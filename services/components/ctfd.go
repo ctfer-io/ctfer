@@ -20,6 +20,7 @@ type CTFd struct {
 
 	secRand *random.RandomId
 	sec     *corev1.Secret
+	tlssec  *corev1.Secret
 	pvc     *corev1.PersistentVolumeClaim
 	sts     *appsv1.StatefulSet
 	svc     *corev1.Service
@@ -35,7 +36,8 @@ type CTFdArgs struct {
 	MariaDBSecretName pulumi.StringInput
 	Image             pulumi.StringInput
 	Registry          pulumi.StringInput
-	TLSSecretName     pulumi.StringInput
+	CTFdCrt           pulumi.StringInput
+	CTFdKey           pulumi.StringInput
 	Hostname          pulumi.StringInput
 	ChallManagerUrl   pulumi.StringInput
 }
@@ -315,6 +317,33 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		return
 	}
 
+	// FIXME the secret still be created even if the pulumi config does not exists
+	// The secret is not valid so the default traefik cert will be used
+	tlsOps := netwv1.IngressTLSArray{}
+	if args.CTFdCrt != nil && args.CTFdKey != nil {
+		ctfd.tlssec, err = corev1.NewSecret(ctx, "ctfd-secret-tls", &corev1.SecretArgs{
+			Metadata: metav1.ObjectMetaArgs{
+				Namespace: args.Namespace,
+				Labels: pulumi.StringMap{
+					"ctfer/infra": pulumi.String("ctfd"),
+				},
+			},
+			Type: pulumi.String("kubernetes.io/tls"),
+			StringData: pulumi.StringMap{
+				"tls.crt": args.CTFdCrt.ToStringOutput(),
+				"tls.key": args.CTFdKey.ToStringOutput(),
+			},
+		}, opts...)
+		if err != nil {
+			return err
+		}
+
+		tlsOps = append(tlsOps,
+			netwv1.IngressTLSArgs{
+				SecretName: ctfd.tlssec.Metadata.Name(),
+			})
+	}
+
 	ctfd.ing, err = netwv1.NewIngress(ctx, "ctfd-ingress", &netwv1.IngressArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Labels: pulumi.StringMap{
@@ -350,12 +379,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 					},
 				},
 			},
-			Tls: netwv1.IngressTLSArray{
-				netwv1.IngressTLSArgs{
-					// The TLS secret is defered to Traefik for TLS unpacking
-					SecretName: args.TLSSecretName,
-				},
-			},
+			Tls: tlsOps,
 		},
 	}, opts...)
 	if err != nil {

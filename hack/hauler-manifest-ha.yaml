@@ -9,8 +9,8 @@ spec:
   images:
     - name: docker.io/bitnami/mariadb:11.4.5-debian-12-r12
     - name: docker.io/bitnami/redis:7.4.3-debian-12-r0
-    - name: docker.io/ctferio/ctfd:3.7.7-0.3.0
-    - name: docker.io/library/traefik:v3.3.6
+    - name: docker.io/ctferio/ctfd:3.7.7-0.3.2
+
 
 ---
 apiVersion: content.hauler.cattle.io/v1
@@ -25,7 +25,4 @@ spec:
     - name: redis
       repoURL: oci://registry-1.docker.io/bitnamicharts
       version: 20.13.4
-    - name: traefik
-      repoURL: oci://ghcr.io/traefik/helm
-      version: 35.2.0
 

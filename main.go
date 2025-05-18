@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
-	"os"
 
 	"github.com/ctfer-io/ctfer/services"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -29,34 +27,12 @@ func main() {
 			return err
 		}
 
-		// Create TLS secret for CTFd
-		tlsCrt, err := os.ReadFile(cfg.CrtPath)
-		if err != nil {
-			return err
-		}
-		tlsKey, err := os.ReadFile(cfg.KeyPath)
-		if err != nil {
-			return err
-		}
-		sec, err := corev1.NewSecret(ctx, "ctfd-tls-sec", &corev1.SecretArgs{
-			Metadata: metav1.ObjectMetaArgs{
-				Namespace: pulumi.String(cfg.Namespace),
-			},
-			Type: pulumi.String("kubernetes.io/tls"),
-			Data: pulumi.ToStringMap(map[string]string{
-				"tls.crt": base64.StdEncoding.EncodeToString(tlsCrt),
-				"tls.key": base64.StdEncoding.EncodeToString(tlsKey),
-			}),
-		})
-		if err != nil {
-			return
-		}
-
 		ctfer, err := services.NewCTFer(ctx, ctx.Stack(), &services.CTFerArgs{
 			Namespace:        pulumi.String(cfg.Namespace),
 			CTFdImage:        pulumi.String(cfg.CTFdImage),
 			Hostname:         pulumi.String(cfg.Hostname),
-			TLSSecretName:    sec.Metadata.Name().Elem(),
+			CTFdCrt:          cfg.CTFdCrt,
+			CTFdKey:          cfg.CTFdKey,
 			ChartsRepository: pulumi.String(cfg.ChartsRepository),
 			ImagesRepository: pulumi.String(cfg.ImagesRepository),
 			ChallManagerUrl:  pulumi.String(cfg.ChallManagerUrl),
@@ -81,8 +57,8 @@ type Config struct {
 	ChartsRepository string
 	CTFdImage        string
 	ChallManagerUrl  string
-	CrtPath          string
-	KeyPath          string
+	CTFdCrt          pulumi.StringInput
+	CTFdKey          pulumi.StringInput
 }
 
 func InitConfig(ctx *pulumi.Context) *Config {
@@ -94,8 +70,8 @@ func InitConfig(ctx *pulumi.Context) *Config {
 		ChartsRepository: config.Get("charts-repository"),                   // oci://registry.dev1.ctfer-io.lab
 		CTFdImage:        def(config.Get("ctfd-image"), "ctfd/ctfd:latest"), // ctferio/ctfd:3.7.7-0.3.0
 		ChallManagerUrl:  config.Get("chall-manager-url"),                   // http://chall-manager-svc.ctfer:8080/api/v1
-		CrtPath:          def(config.Get("crt-path"), "certs/ctfd.crt"),
-		KeyPath:          def(config.Get("key-path"), "certs/ctfd.key"),
+		CTFdCrt:          config.GetSecret("ctfd-crt"),
+		CTFdKey:          config.GetSecret("ctfd-key"),
 	}
 }
 
