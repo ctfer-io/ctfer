@@ -32,6 +32,14 @@ If you want to configure the ChallManager URL
 pulumi config set chall-manager-url http://chall-manager-svc.ctfer:8080/api/v1
 ```
 
+If you want to use a custom certificate
+```bash
+# export PULUMI_CONFIG_PASSPHRASE before
+# https://github.com/pulumi/pulumi/issues/6015
+cat /path/to/crt.pem | pulumi config set --secret ctfd-crt
+cat /path/to/key.pem | pulumi config set --secret ctfd-key
+```
+
 Deploy ctfer 
 ```bash
 pulumi config set hostname ctfd.dev1.ctfer-io.lab
