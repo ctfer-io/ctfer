@@ -33,6 +33,7 @@ func main() {
 			Hostname:         pulumi.String(cfg.Hostname),
 			CTFdCrt:          cfg.CTFdCrt,
 			CTFdKey:          cfg.CTFdKey,
+			CTFdStorageSize:  pulumi.String(cfg.CTFdStorageSize),
 			ChartsRepository: pulumi.String(cfg.ChartsRepository),
 			ImagesRepository: pulumi.String(cfg.ImagesRepository),
 			ChallManagerUrl:  pulumi.String(cfg.ChallManagerUrl),
@@ -57,6 +58,7 @@ type Config struct {
 	ChartsRepository string
 	CTFdImage        string
 	ChallManagerUrl  string
+	CTFdStorageSize  string
 	CTFdCrt          pulumi.StringInput
 	CTFdKey          pulumi.StringInput
 }
@@ -72,6 +74,7 @@ func InitConfig(ctx *pulumi.Context) *Config {
 		ChallManagerUrl:  config.Get("chall-manager-url"),                   // http://chall-manager-svc.ctfer:8080/api/v1
 		CTFdCrt:          config.GetSecret("ctfd-crt"),
 		CTFdKey:          config.GetSecret("ctfd-key"),
+		CTFdStorageSize:  def(config.Get("ctfd-storage-size"), "2Gi"),
 	}
 }
 
