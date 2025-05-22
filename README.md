@@ -40,6 +40,11 @@ cat /path/to/crt.pem | pulumi config set --secret ctfd-crt
 cat /path/to/key.pem | pulumi config set --secret ctfd-key
 ```
 
+If you want to have a larger filesystem for uploads on CTFd
+```bash
+pulumi config set ctfd-storage-size 10Gi
+```
+
 Deploy ctfer 
 ```bash
 pulumi config set hostname ctfd.dev1.ctfer-io.lab

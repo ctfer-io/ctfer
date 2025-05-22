@@ -39,6 +39,7 @@ type CTFdArgs struct {
 	CTFdCrt           pulumi.StringInput
 	CTFdKey           pulumi.StringInput
 	Hostname          pulumi.StringInput
+	CTFdStorageSize   pulumi.StringInput
 	ChallManagerUrl   pulumi.StringInput
 }
 
@@ -137,9 +138,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				"ReadWriteMany",
 			}),
 			Resources: corev1.VolumeResourceRequirementsArgs{
-				Requests: pulumi.ToStringMap(map[string]string{
-					"storage": "2Gi", // TODO make it configurable
-				}),
+				Requests: pulumi.StringMap{
+					"storage": args.CTFdStorageSize,
+				},
 			},
 		},
 	}, opts...)
@@ -172,7 +173,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		},
 		corev1.EnvVarArgs{
 			Name:  pulumi.String("REVERSE_PROXY"),
-			Value: pulumi.String("2,2,2,2,2"),
+			Value: pulumi.String("true"),
 		},
 	}
 
