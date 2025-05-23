@@ -45,6 +45,12 @@ If you want to have a larger filesystem for uploads on CTFd
 pulumi config set ctfd-storage-size 10Gi
 ```
 
+if you want to configure several workers on CTFd
+```bash
+pulumi config set ctfd-workers 3
+pulumi config set ctfd-replicas 3
+```
+
 Deploy ctfer 
 ```bash
 pulumi config set hostname ctfd.dev1.ctfer-io.lab

@@ -9,7 +9,7 @@ spec:
   images:
     - name: docker.io/bitnami/mariadb:11.4.5-debian-12-r12
     - name: docker.io/bitnami/redis:7.4.3-debian-12-r0
-    - name: docker.io/ctferio/ctfd:3.7.7-0.3.2
+    - name: docker.io/ctferio/ctfd:3.7.7-0.3.4
 
 
 ---

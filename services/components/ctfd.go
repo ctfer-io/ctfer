@@ -40,6 +40,8 @@ type CTFdArgs struct {
 	CTFdKey           pulumi.StringInput
 	Hostname          pulumi.StringInput
 	CTFdStorageSize   pulumi.StringInput
+	CTFdWorkers       pulumi.IntInput
+	CTFdReplicas      pulumi.IntInput
 	ChallManagerUrl   pulumi.StringInput
 }
 
@@ -177,6 +179,13 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		},
 	}
 
+	if args.CTFdWorkers != nil {
+		envs = append(envs, corev1.EnvVarArgs{
+			Name:  pulumi.String("WORKERS"),
+			Value: pulumi.Sprintf("%d", args.CTFdWorkers),
+		})
+	}
+
 	if args.ChallManagerUrl != nil {
 		envs = append(envs, corev1.EnvVarArgs{
 			Name:  pulumi.String("PLUGIN_SETTINGS_CM_API_URL"),
@@ -198,7 +207,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 					"ctfer/infra": pulumi.String("ctfd"),
 				},
 			},
-			Replicas: pulumi.Int(3),
+			Replicas: args.CTFdReplicas,
 			Template: &corev1.PodTemplateSpecArgs{
 				Metadata: &metav1.ObjectMetaArgs{
 					Namespace: args.Namespace,
