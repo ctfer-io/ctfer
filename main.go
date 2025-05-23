@@ -34,6 +34,8 @@ func main() {
 			CTFdCrt:          cfg.CTFdCrt,
 			CTFdKey:          cfg.CTFdKey,
 			CTFdStorageSize:  pulumi.String(cfg.CTFdStorageSize),
+			CTFdWorkers:      pulumi.Int(cfg.CTFdWorkers),
+			CTFdReplicas:     pulumi.Int(cfg.CTFdReplicas),
 			ChartsRepository: pulumi.String(cfg.ChartsRepository),
 			ImagesRepository: pulumi.String(cfg.ImagesRepository),
 			ChallManagerUrl:  pulumi.String(cfg.ChallManagerUrl),
@@ -61,6 +63,8 @@ type Config struct {
 	CTFdStorageSize  string
 	CTFdCrt          pulumi.StringInput
 	CTFdKey          pulumi.StringInput
+	CTFdReplicas     int
+	CTFdWorkers      int
 }
 
 func InitConfig(ctx *pulumi.Context) *Config {
@@ -75,6 +79,8 @@ func InitConfig(ctx *pulumi.Context) *Config {
 		CTFdCrt:          config.GetSecret("ctfd-crt"),
 		CTFdKey:          config.GetSecret("ctfd-key"),
 		CTFdStorageSize:  def(config.Get("ctfd-storage-size"), "2Gi"),
+		CTFdReplicas:     def(config.GetInt("ctfd-replicas"), 1),
+		CTFdWorkers:      def(config.GetInt("ctfd-workers"), 1),
 	}
 }
 
