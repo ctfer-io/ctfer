@@ -31,6 +31,8 @@ type CTFerArgs struct {
 	CTFdStorageSize pulumi.StringInput
 	CTFdWorkers     pulumi.IntInput
 	CTFdReplicas    pulumi.IntInput
+	CTFdRequests    pulumi.StringMapInput
+	CTFdLimits      pulumi.StringMapInput
 
 	Hostname         pulumi.StringInput
 	ChartsRepository pulumi.StringInput
@@ -134,6 +136,8 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		CTFdWorkers:       args.CTFdWorkers,
 		CTFdReplicas:      args.CTFdReplicas,
 		ChallManagerUrl:   args.ChallManagerUrl,
+		CTFdRequests:      args.CTFdRequests,
+		CTFdLimits:        args.CTFdLimits,
 	}, append(opts, pulumi.DependsOn([]pulumi.Resource{
 		ctfer.maria,
 		ctfer.redis,
