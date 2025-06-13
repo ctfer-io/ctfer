@@ -43,6 +43,8 @@ type CTFdArgs struct {
 	CTFdWorkers       pulumi.IntInput
 	CTFdReplicas      pulumi.IntInput
 	ChallManagerUrl   pulumi.StringInput
+	CTFdLimits        pulumi.StringMapInput
+	CTFdRequests      pulumi.StringMapInput
 }
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
@@ -244,13 +246,8 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 								},
 							},
 							Resources: corev1.ResourceRequirementsArgs{
-								Requests: pulumi.ToStringMap(map[string]string{
-									"cpu":    "1",
-									"memory": "256Mi",
-								}),
-								Limits: pulumi.ToStringMap(map[string]string{
-									"memory": "512Mi",
-								}),
+								Requests: args.CTFdRequests,
+								Limits:   args.CTFdLimits,
 							},
 							ReadinessProbe: corev1.ProbeArgs{
 								HttpGet: corev1.HTTPGetActionArgs{

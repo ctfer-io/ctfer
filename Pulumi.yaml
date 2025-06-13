@@ -1,3 +1,63 @@
 name: ctfer
 runtime: go
 description: High-Availability and Secure CTF deployment tool over Kubernetes 
+config:
+  namespace:
+    type: string
+    description: The namespace where ctfer stack will be installed
+    default: ctfer
+  hostname:
+    type: string
+    description: The URL to use for CTFd
+    default: localhost
+  images-repository:
+    type: string
+    description: Custom registry to use for Docker images
+    default: ""
+  charts-repository:
+    type: string
+    description: Custom registry to use for Helm charts (oci://)
+    default: ""
+
+## CTFd Configuration
+  ctfd-image:
+    type: string
+    description: CTFd image to use
+    default: ctferio/ctfd:latest
+  chall-manager-url:
+    type: string
+    description: Chall-Manager API URL to use
+  ctfd-crt:
+    type: string
+    description: X509 .crt
+  ctfd-key:
+    type: string
+    description: x509 .key content for https
+  ctfd-storage-size:
+    type: string
+    description: Size of the PVC
+    default: "2Gi"
+  ctfd-replicas:
+    type: integer
+    description: Number of replicas of the StatefulSet
+    default: 1
+  ctfd-workers:
+    type: integer
+    description: Number of worker inside container
+    default: 1
+  ctfd-requests.cpu:
+    type: string
+    description: The number of CPUs to use.
+    default: "2.0"
+  ctfd-requests.memory:
+    type: string
+    description : The memory size to use.
+    default: "1Gi"
+  ctfd-limits.cpu:
+    type: string
+    description: The maximum number of CPUs to use.
+    default: "4.0"
+  ctfd-limits.memory:
+    type: string
+    description: The maximum memory size to use.
+    default: "2Gi"

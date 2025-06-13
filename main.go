@@ -39,6 +39,8 @@ func main() {
 			ChartsRepository: pulumi.String(cfg.ChartsRepository),
 			ImagesRepository: pulumi.String(cfg.ImagesRepository),
 			ChallManagerUrl:  pulumi.String(cfg.ChallManagerUrl),
+			CTFdRequests:     pulumi.ToStringMap(cfg.CTFdRequests),
+			CTFdLimits:       pulumi.ToStringMap(cfg.CTFdLimits),
 		})
 		if err != nil {
 			return err
@@ -65,29 +67,32 @@ type Config struct {
 	CTFdKey          pulumi.StringInput
 	CTFdReplicas     int
 	CTFdWorkers      int
+	CTFdRequests     map[string]string
+	CTFdLimits       map[string]string
 }
 
 func InitConfig(ctx *pulumi.Context) *Config {
-	config := config.New(ctx, "ctfer")
-	return &Config{
-		Namespace:        def(config.Get("namespace"), "ctfer"),
-		Hostname:         def(config.Get("hostname"), "localhost"),
-		ImagesRepository: config.Get("images-repository"),                   // registry.dev1.ctfer-io.lab
-		ChartsRepository: config.Get("charts-repository"),                   // oci://registry.dev1.ctfer-io.lab
-		CTFdImage:        def(config.Get("ctfd-image"), "ctfd/ctfd:latest"), // ctferio/ctfd:3.7.7-0.3.0
-		ChallManagerUrl:  config.Get("chall-manager-url"),                   // http://chall-manager-svc.ctfer:8080/api/v1
-		CTFdCrt:          config.GetSecret("ctfd-crt"),
-		CTFdKey:          config.GetSecret("ctfd-key"),
-		CTFdStorageSize:  def(config.Get("ctfd-storage-size"), "2Gi"),
-		CTFdReplicas:     def(config.GetInt("ctfd-replicas"), 1),
-		CTFdWorkers:      def(config.GetInt("ctfd-workers"), 1),
+	cfg := config.New(ctx, "")
+	c := &Config{
+		Namespace:        cfg.Get("namespace"),
+		Hostname:         cfg.Get("hostname"),
+		ImagesRepository: cfg.Get("images-repository"),
+		ChartsRepository: cfg.Get("charts-repository"),
+		CTFdImage:        cfg.Get("ctfd-image"),
+		ChallManagerUrl:  cfg.Get("chall-manager-url"),
+		CTFdCrt:          cfg.GetSecret("ctfd-crt"),
+		CTFdKey:          cfg.GetSecret("ctfd-key"),
+		CTFdStorageSize:  cfg.Get("ctfd-storage-size"),
+		CTFdReplicas:     cfg.GetInt("ctfd-replicas"),
+		CTFdWorkers:      cfg.GetInt("ctfd-workers"),
 	}
-}
+	if err := cfg.TryObject("ctfd-requests", &c.CTFdRequests); err != nil {
+		panic(err)
+	}
 
-func def[T comparable](act, def T) T {
-	zero := *new(T)
-	if act != zero {
-		return act
+	if err := cfg.TryObject("ctfd-limits", &c.CTFdLimits); err != nil {
+		panic(err)
 	}
-	return def
+
+	return c
 }
