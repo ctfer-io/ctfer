@@ -187,7 +187,7 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 
 				// Enable pulling images from private registry
 				if repo != "" {
-					mp["imageRegistry"] = repo
+					mp["imageRegistry"] = repo[:len(repo)-1]
 					mp["security"] = map[string]any{
 						"allowInsecureImages": true,
 					}

@@ -163,7 +163,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 
 				// Enable pulling images from private registry
 				if repo != "" {
-					mp["imageRegistry"] = repo
+					mp["imageRegistry"] = repo[:len(repo)-1]
 					mp["security"] = map[string]any{
 						"allowInsecureImages": true,
 					}
