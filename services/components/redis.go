@@ -140,10 +140,10 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 		Values: pulumi.Map{
 			"global": args.Registry.ToStringOutput().ApplyT(func(repo string) map[string]any {
 				mp := map[string]any{}
-				mp["imageRegistry"] = repo
 
 				// Enable pulling images from private registry
 				if repo != "" {
+					mp["imageRegistry"] = repo
 					mp["security"] = map[string]any{
 						"allowInsecureImages": true,
 					}

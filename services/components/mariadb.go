@@ -164,10 +164,10 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 		Values: pulumi.Map{
 			"global": args.Registry.ToStringOutput().ApplyT(func(repo string) map[string]any {
 				mp := map[string]any{}
-				mp["imageRegistry"] = repo
 
 				// Enable pulling images from private registry
 				if repo != "" {
+					mp["imageRegistry"] = repo
 					mp["security"] = map[string]any{
 						"allowInsecureImages": true,
 					}
