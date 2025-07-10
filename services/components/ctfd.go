@@ -45,6 +45,9 @@ type CTFdArgs struct {
 	ChallManagerUrl   pulumi.StringInput
 	CTFdLimits        pulumi.StringMapInput
 	CTFdRequests      pulumi.StringMapInput
+
+	registry pulumi.StringOutput
+	image    pulumi.StringOutput
 }
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
@@ -74,6 +77,30 @@ func (ctfd *CTFd) defaults(args *CTFdArgs) *CTFdArgs {
 	if args == nil {
 		args = &CTFdArgs{}
 	}
+
+	// Define private registry if any
+	args.registry = pulumi.String("").ToStringOutput()
+	if args.Registry != nil {
+		args.registry = args.Registry.ToStringPtrOutput().ApplyT(func(in *string) string {
+			// No private registry -> defaults to Docker Hub
+			if in == nil {
+				return ""
+			}
+
+			str := *in
+			// If one set, make sure it ends with one '/'
+			if str != "" && !strings.HasSuffix(str, "/") {
+				str = str + "/"
+			}
+			return str
+		}).(pulumi.StringOutput)
+	}
+
+	args.image = pulumi.String("ctferio/ctfd:latest").ToStringOutput()
+	if args.Image != nil {
+		args.image = args.Image.ToStringOutput()
+	}
+
 	return args
 }
 
@@ -220,15 +247,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				Spec: &corev1.PodSpecArgs{
 					Containers: corev1.ContainerArray{
 						corev1.ContainerArgs{
-							Name: pulumi.String("ctfd"),
-							Image: pulumi.All(args.Registry, args.Image).ApplyT(func(all []any) string {
-								registry := all[0].(string)
-								if registry != "" && !strings.HasSuffix(registry, "/") {
-									registry += "/"
-								}
-								return registry + all[1].(string)
-							}).(pulumi.StringOutput),
-							Env: envs,
+							Name:  pulumi.String("ctfd"),
+							Image: pulumi.Sprintf("%s%s", args.registry, args.image),
+							Env:   envs,
 							Ports: corev1.ContainerPortArray{
 								corev1.ContainerPortArgs{
 									ContainerPort: pulumi.Int(8000),

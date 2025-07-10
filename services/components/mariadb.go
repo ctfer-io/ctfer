@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
@@ -36,6 +37,7 @@ type MariaDBArgs struct {
 	ChartVersion     pulumi.StringInput
 	Registry         pulumi.StringInput
 
+	registry pulumi.StringOutput
 	chartUrl pulumi.StringOutput
 }
 
@@ -74,6 +76,24 @@ func (mdb *MariaDB) defaults(args *MariaDBArgs) *MariaDBArgs {
 				return defaultMdbChartURL
 			}
 			return fmt.Sprintf("%s/mariadb", chartRepository)
+		}).(pulumi.StringOutput)
+	}
+
+	// Define private registry if any
+	args.registry = pulumi.String("").ToStringOutput()
+	if args.Registry != nil {
+		args.registry = args.Registry.ToStringPtrOutput().ApplyT(func(in *string) string {
+			// No private registry -> defaults to Docker Hub
+			if in == nil {
+				return ""
+			}
+
+			str := *in
+			// If one set, make sure it ends with one '/'
+			if str != "" && !strings.HasSuffix(str, "/") {
+				str = str + "/"
+			}
+			return str
 		}).(pulumi.StringOutput)
 	}
 
@@ -162,7 +182,7 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 		Version:   args.ChartVersion,
 		Chart:     args.chartUrl,
 		Values: pulumi.Map{
-			"global": args.Registry.ToStringOutput().ApplyT(func(repo string) map[string]any {
+			"global": args.registry.ToStringOutput().ApplyT(func(repo string) map[string]any {
 				mp := map[string]any{}
 
 				// Enable pulling images from private registry

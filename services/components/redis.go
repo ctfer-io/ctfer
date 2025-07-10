@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/hashicorp/go-multierror"
@@ -32,6 +33,7 @@ type RedisArgs struct {
 	ChartVersion     pulumi.StringInput
 	Registry         pulumi.StringInput
 
+	registry pulumi.StringOutput
 	chartUrl pulumi.StringOutput
 }
 
@@ -69,6 +71,24 @@ func (rd *Redis) defaults(args *RedisArgs) *RedisArgs {
 				return defaultRedisChartURL
 			}
 			return fmt.Sprintf("%s/redis", chartRepository)
+		}).(pulumi.StringOutput)
+	}
+
+	// Define private registry if any
+	args.registry = pulumi.String("").ToStringOutput()
+	if args.Registry != nil {
+		args.registry = args.Registry.ToStringPtrOutput().ApplyT(func(in *string) string {
+			// No private registry -> defaults to Docker Hub
+			if in == nil {
+				return ""
+			}
+
+			str := *in
+			// If one set, make sure it ends with one '/'
+			if str != "" && !strings.HasSuffix(str, "/") {
+				str = str + "/"
+			}
+			return str
 		}).(pulumi.StringOutput)
 	}
 
@@ -138,7 +158,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 		Version:   pulumi.String("20.13.4"),
 		Chart:     args.chartUrl,
 		Values: pulumi.Map{
-			"global": args.Registry.ToStringOutput().ApplyT(func(repo string) map[string]any {
+			"global": args.registry.ToStringOutput().ApplyT(func(repo string) map[string]any {
 				mp := map[string]any{}
 
 				// Enable pulling images from private registry
