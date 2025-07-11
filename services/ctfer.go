@@ -196,7 +196,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 					},
 					Ports: netwv1.NetworkPolicyPortArray{
 						netwv1.NetworkPolicyPortArgs{
-							Port: parseURLPort(ctfer.URL),
+							Port: pulumi.Int(8000),
 						},
 					},
 				},
