@@ -9,8 +9,11 @@ import (
 )
 
 func main() {
-	pulumi.Run(func(ctx *pulumi.Context) (err error) {
-		cfg := InitConfig(ctx)
+	pulumi.Run(func(ctx *pulumi.Context) error {
+		cfg, err := loadConfig(ctx)
+		if err != nil {
+			return err
+		}
 
 		// Create CTF's namespace
 		if _, err := corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
@@ -39,6 +42,8 @@ func main() {
 			ChallManagerUrl:  pulumi.String(cfg.ChallManagerUrl),
 			CTFdRequests:     pulumi.ToStringMap(cfg.CTFdRequests),
 			CTFdLimits:       pulumi.ToStringMap(cfg.CTFdLimits),
+			IngressNamespace: pulumi.String(cfg.IngressNamespace),
+			IngressLabels:    pulumi.ToStringMap(cfg.IngressLabels),
 		})
 		if err != nil {
 			return err
@@ -65,9 +70,11 @@ type Config struct {
 	CTFdWorkers      int
 	CTFdRequests     map[string]string
 	CTFdLimits       map[string]string
+	IngressNamespace string
+	IngressLabels    map[string]string
 }
 
-func InitConfig(ctx *pulumi.Context) *Config {
+func loadConfig(ctx *pulumi.Context) (*Config, error) {
 	cfg := config.New(ctx, "")
 	c := &Config{
 		Namespace:        cfg.Get("namespace"),
@@ -83,12 +90,16 @@ func InitConfig(ctx *pulumi.Context) *Config {
 		CTFdWorkers:      cfg.GetInt("ctfd-workers"),
 	}
 	if err := cfg.TryObject("ctfd-requests", &c.CTFdRequests); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if err := cfg.TryObject("ctfd-limits", &c.CTFdLimits); err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return c
+	if err := cfg.TryObject("ingress-labels", &c.IngressLabels); err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }

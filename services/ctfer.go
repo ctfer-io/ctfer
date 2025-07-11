@@ -46,6 +46,9 @@ type CTFerArgs struct {
 	Hostname         pulumi.StringInput
 	ChartsRepository pulumi.StringInput
 	ImagesRepository pulumi.StringInput
+
+	IngressNamespace pulumi.StringInput
+	IngressLabels    pulumi.StringMapInput
 }
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
@@ -155,7 +158,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		return
 	}
 
-	// TODO top-level NetworkPolicies
+	// Top-level NetworkPolicies
 	// - IngressController -> CTFd
 	// - CTFd -> Redis
 	// - CTFd -> MariaDB
@@ -170,10 +173,33 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		},
 		Spec: netwv1.NetworkPolicySpecArgs{
 			PolicyTypes: pulumi.ToStringArray([]string{
+				"Ingress",
 				"Egress",
 			}),
 			PodSelector: metav1.LabelSelectorArgs{
 				MatchLabels: ctfer.ctfd.PodLabels,
+			},
+			Ingress: netwv1.NetworkPolicyIngressRuleArray{
+				// Ingress ->
+				netwv1.NetworkPolicyIngressRuleArgs{
+					From: netwv1.NetworkPolicyPeerArray{
+						netwv1.NetworkPolicyPeerArgs{
+							NamespaceSelector: metav1.LabelSelectorArgs{
+								MatchLabels: pulumi.StringMap{
+									"kubernetes.io/metadata.name": args.IngressNamespace,
+								},
+							},
+							PodSelector: metav1.LabelSelectorArgs{
+								MatchLabels: args.IngressLabels,
+							},
+						},
+					},
+					Ports: netwv1.NetworkPolicyPortArray{
+						netwv1.NetworkPolicyPortArgs{
+							Port: parseURLPort(ctfer.URL),
+						},
+					},
+				},
 			},
 			Egress: netwv1.NetworkPolicyEgressRuleArray{
 				// -> Redis
