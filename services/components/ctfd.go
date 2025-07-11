@@ -214,6 +214,14 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		})
 	}
 
+	ctfd.PodLabels = pulumi.StringMap{
+		"app.kubernetes.io/name":      pulumi.String("ctfd"),
+		"app.kubernetes.io/component": pulumi.String("ctfd"),
+		"app.kubernetes.io/part-of":   pulumi.String("monitoring"),
+		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
+		"redis-client":                pulumi.String("true"), // netpol podSelector
+		"mariadb-client":              pulumi.String("true"), // netpol podSelector
+	}.ToStringMapOutput()
 	ctfd.sts, err = appsv1.NewStatefulSet(ctx, "ctfd-sts", &appsv1.StatefulSetArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Name:      pulumi.String("ctfd-sts"),
@@ -232,11 +240,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Template: &corev1.PodTemplateSpecArgs{
 				Metadata: &metav1.ObjectMetaArgs{
 					Namespace: args.Namespace,
-					Labels: pulumi.StringMap{
-						"ctfer/infra":    pulumi.String("ctfd"),
-						"redis-client":   pulumi.String("true"), // netpol podSelector
-						"mariadb-client": pulumi.String("true"), // netpol podSelector
-					},
+					Labels:    ctfd.PodLabels,
 				},
 				Spec: &corev1.PodSpecArgs{
 					Containers: corev1.ContainerArray{
@@ -415,7 +419,8 @@ func (ctfd *CTFd) outputs(ctx *pulumi.Context) error {
 	ctfd.URL = ctfd.ing.Spec.ApplyT(func(spec netwv1.IngressSpec) string {
 		return *spec.Rules[0].Host
 	}).(pulumi.StringOutput)
-	ctfd.PodLabels = ctfd.sts.Spec.Template().Metadata().Labels()
+
+	// ctfd.PodLabels are set ahead of deployment to avoid deadlocks with mariadb
 
 	return ctx.RegisterResourceOutputs(ctfd, pulumi.Map{
 		"url":       ctfd.URL,
