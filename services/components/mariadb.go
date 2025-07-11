@@ -27,8 +27,8 @@ type MariaDB struct {
 	sec        *corev1.Secret
 	chart      *helmv4.Chart
 
-	// SecretName that points to a Secret with a k
-	SecretName pulumi.StringOutput
+	URL       pulumi.StringOutput
+	PodLabels pulumi.StringMapOutput
 }
 
 type MariaDBArgs struct {
@@ -128,11 +128,6 @@ func (mdb *MariaDB) check(_ *MariaDBArgs) error {
 }
 
 func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pulumi.ResourceOption) (err error) {
-	mariadbLabels := pulumi.StringMap{
-		"ctfer.io/app-name": pulumi.String("mariadb"),
-		"ctfer.io/part-of":  pulumi.String("ctfer"),
-	}
-
 	// => Secrets
 	mdb.masterPass, err = random.NewRandomPassword(ctx, "masterPass-secret", &random.RandomPasswordArgs{
 		Length:  pulumi.Int(32),
@@ -161,16 +156,18 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 
 	mdb.sec, err = corev1.NewSecret(ctx, "mariadb-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Labels:    mariadbLabels,
-			Name:      pulumi.String("mariadb-secret"),
 			Namespace: args.Namespace,
+			Labels: pulumi.StringMap{
+				"app.kubernetes.io/components": pulumi.String("mariadb"),
+				"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
+				"ctfer.io/stack-name":          pulumi.String(ctx.Stack()),
+			},
 		},
 		Type: pulumi.String("Opaque"),
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
 			"mariadb-root-password":        mdb.masterPass.Result,
 			"mariadb-password":             mdb.userPass.Result,
 			"mariadb-replication-password": mdb.repPass.Result,
-			"mariadb-url":                  pulumi.Sprintf("mysql+pymysql://%s:%s@mariadb-headless/ctfd", mdb.userName, mdb.userPass.Result),
 		}),
 	}, opts...)
 	if err != nil {
@@ -200,7 +197,6 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 				"existingSecret": mdb.sec.Metadata.Name(), // use secret with generated passwords above
 			},
 			"primary": pulumi.Map{
-				"podLabels": mariadbLabels,
 				"persistence": pulumi.Map{
 					"storageClass": pulumi.String("longhorn"),
 					"accessModes": pulumi.StringArray{
@@ -228,6 +224,11 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 				"allowExternal":       pulumi.Bool(false),
 				"allowExternalEgress": pulumi.Bool(false),
 			},
+			"commonLabels": pulumi.StringMap{
+				"app.kubernetes.io/components": pulumi.String("mariadb"),
+				"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
+				"ctfer.io/stack-name":          pulumi.String(ctx.Stack()),
+			},
 		},
 	}, opts...)
 	if err != nil {
@@ -238,9 +239,15 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 }
 
 func (mdb *MariaDB) outputs(ctx *pulumi.Context) error {
-	mdb.SecretName = mdb.sec.Metadata.Name().Elem()
+	mdb.URL = pulumi.Sprintf("mysql+pymysql://%s:%s@mariadb-headless/ctfd", mdb.userName, mdb.userPass.Result)
+	mdb.PodLabels = pulumi.StringMap{
+		"app.kubernetes.io/components": pulumi.String("mariadb"),
+		"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
+		"ctfer.io/stack-name":          pulumi.String(ctx.Stack()),
+	}.ToStringMapOutput()
 
 	return ctx.RegisterResourceOutputs(mdb, pulumi.Map{
-		"secretName": mdb.SecretName,
+		"url":       mdb.URL,
+		"podLabels": mdb.PodLabels,
 	})
 }

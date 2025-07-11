@@ -28,23 +28,25 @@ type CTFd struct {
 
 	// URL contains the CTFd's URL once provided.
 	URL pulumi.StringOutput
+
+	PodLabels pulumi.StringMapOutput
 }
 
 type CTFdArgs struct {
-	Namespace         pulumi.StringInput
-	RedisSecretName   pulumi.StringInput
-	MariaDBSecretName pulumi.StringInput
-	Image             pulumi.StringInput
-	Registry          pulumi.StringInput
-	CTFdCrt           pulumi.StringInput
-	CTFdKey           pulumi.StringInput
-	Hostname          pulumi.StringInput
-	CTFdStorageSize   pulumi.StringInput
-	CTFdWorkers       pulumi.IntInput
-	CTFdReplicas      pulumi.IntInput
-	ChallManagerUrl   pulumi.StringInput
-	CTFdLimits        pulumi.StringMapInput
-	CTFdRequests      pulumi.StringMapInput
+	Namespace       pulumi.StringInput
+	RedisURL        pulumi.StringInput
+	MariaDBURL      pulumi.StringInput
+	Image           pulumi.StringInput
+	Registry        pulumi.StringInput
+	CTFdCrt         pulumi.StringInput
+	CTFdKey         pulumi.StringInput
+	Hostname        pulumi.StringInput
+	CTFdStorageSize pulumi.StringInput
+	CTFdWorkers     pulumi.IntInput
+	CTFdReplicas    pulumi.IntInput
+	ChallManagerUrl pulumi.StringInput
+	CTFdLimits      pulumi.StringMapInput
+	CTFdRequests    pulumi.StringMapInput
 
 	registry pulumi.StringOutput
 	image    pulumi.StringOutput
@@ -144,7 +146,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Name:      pulumi.String("ctfd-secret"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"ctfer/infra":  pulumi.String("ctfd"),
+				"ctfer/infra": pulumi.String("ctfd"),
 			},
 		},
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
@@ -181,22 +183,12 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 
 	envs := corev1.EnvVarArray{
 		corev1.EnvVarArgs{
-			Name: pulumi.String("DATABASE_URL"),
-			ValueFrom: corev1.EnvVarSourceArgs{
-				SecretKeyRef: corev1.SecretKeySelectorArgs{
-					Name: args.MariaDBSecretName,
-					Key:  pulumi.String("mariadb-url"),
-				},
-			},
+			Name:  pulumi.String("DATABASE_URL"),
+			Value: args.MariaDBURL,
 		},
 		corev1.EnvVarArgs{
-			Name: pulumi.String("REDIS_URL"),
-			ValueFrom: corev1.EnvVarSourceArgs{
-				SecretKeyRef: corev1.SecretKeySelectorArgs{
-					Name: args.RedisSecretName,
-					Key:  pulumi.String("redis-url"),
-				},
-			},
+			Name:  pulumi.String("REDIS_URL"),
+			Value: args.RedisURL,
 		},
 		corev1.EnvVarArgs{
 			Name:  pulumi.String("UPLOAD_FOLDER"), // contains scenario.zip
@@ -227,7 +219,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Name:      pulumi.String("ctfd-sts"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),				
+				"ctfer/infra": pulumi.String("ctfd"),
 			},
 		},
 		Spec: appsv1.StatefulSetSpecArgs{
@@ -241,8 +233,8 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				Metadata: &metav1.ObjectMetaArgs{
 					Namespace: args.Namespace,
 					Labels: pulumi.StringMap{
-						"ctfer/infra": pulumi.String("ctfd"),
-						"redis-client": pulumi.String("true"), // netpol podSelector
+						"ctfer/infra":    pulumi.String("ctfd"),
+						"redis-client":   pulumi.String("true"), // netpol podSelector
 						"mariadb-client": pulumi.String("true"), // netpol podSelector
 					},
 				},
@@ -423,8 +415,10 @@ func (ctfd *CTFd) outputs(ctx *pulumi.Context) error {
 	ctfd.URL = ctfd.ing.Spec.ApplyT(func(spec netwv1.IngressSpec) string {
 		return *spec.Rules[0].Host
 	}).(pulumi.StringOutput)
+	ctfd.PodLabels = ctfd.sts.Spec.Template().Metadata().Labels()
 
 	return ctx.RegisterResourceOutputs(ctfd, pulumi.Map{
-		"url": ctfd.URL,
+		"url":       ctfd.URL,
+		"podLabels": ctfd.PodLabels,
 	})
 }
