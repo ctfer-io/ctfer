@@ -243,7 +243,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 					Labels: pulumi.StringMap{
 						"ctfer/infra": pulumi.String("ctfd"),
 						"redis-client": pulumi.String("true"), // netpol podSelector
-						"maridab-client": pulumi.String("true"), // netpol podSelector
+						"mariadb-client": pulumi.String("true"), // netpol podSelector
 					},
 				},
 				Spec: &corev1.PodSpecArgs{
