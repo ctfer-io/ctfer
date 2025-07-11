@@ -144,7 +144,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Name:      pulumi.String("ctfd-secret"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"ctfer/infra":  pulumi.String("ctfd"),
 			},
 		},
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
@@ -228,6 +228,8 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
 				"ctfer/infra": pulumi.String("ctfd"),
+				"redis-client": pulumi.String("true"), // netpol podSelector
+				"maridab-client": pulumi.String("true"), // netpol podSelector
 			},
 		},
 		Spec: appsv1.StatefulSetSpecArgs{

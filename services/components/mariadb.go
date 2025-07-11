@@ -224,6 +224,10 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 				},
 			},
 			"architecture": pulumi.String("standalone"), // explicit
+			"networkPolicy": pulumi.Map{
+				"allowExternal":       pulumi.Bool(false),
+				"allowExternalEgress": pulumi.Bool(false),
+			},
 		},
 	}, opts...)
 	if err != nil {

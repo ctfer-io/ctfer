@@ -197,6 +197,10 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 				},
 			},
 			"architecture": pulumi.String("standalone"), // we don't use replicas for RO actions, TODO enable sentinel
+			"networkPolicy": pulumi.Map{
+				"allowExternal":       pulumi.Bool(false),
+				"allowExternalEgress": pulumi.Bool(false),
+			},
 		},
 	}, opts...)
 	if err != nil {
