@@ -200,9 +200,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 				"allowExternalEgress": pulumi.Bool(false),
 			},
 			"commonLabels": pulumi.StringMap{
-				"app.kubernetes.io/components": pulumi.String("redis"),
-				"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
-				"ctfer.io/stack-name":          pulumi.String(ctx.Stack()),
+				"ctfer.io/stack-name": pulumi.String(ctx.Stack()),
 			},
 		},
 	}, opts...)
@@ -216,9 +214,8 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 func (rd *Redis) outputs(ctx *pulumi.Context) error {
 	rd.URL = pulumi.Sprintf("redis://:%s@redis-master:6379", rd.pass.Result)
 	rd.PodLabels = pulumi.StringMap{
-		"app.kubernetes.io/components": pulumi.String("redis"),
-		"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
-		"ctfer.io/stack-name":          pulumi.String(ctx.Stack()),
+		"app.kubernetes.io/name": pulumi.String("redis"),
+		"ctfer.io/stack-name":    pulumi.String(ctx.Stack()),
 	}.ToStringMapOutput()
 
 	return ctx.RegisterResourceOutputs(rd, pulumi.Map{

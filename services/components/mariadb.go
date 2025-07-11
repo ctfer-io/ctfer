@@ -225,9 +225,7 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 				"allowExternalEgress": pulumi.Bool(false),
 			},
 			"commonLabels": pulumi.StringMap{
-				"app.kubernetes.io/components": pulumi.String("mariadb"),
-				"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
-				"ctfer.io/stack-name":          pulumi.String(ctx.Stack()),
+				"ctfer.io/stack-name": pulumi.String(ctx.Stack()),
 			},
 		},
 	}, opts...)
@@ -241,9 +239,8 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 func (mdb *MariaDB) outputs(ctx *pulumi.Context) error {
 	mdb.URL = pulumi.Sprintf("mysql+pymysql://%s:%s@mariadb-headless:3306/ctfd", mdb.userName, mdb.userPass.Result)
 	mdb.PodLabels = pulumi.StringMap{
-		"app.kubernetes.io/components": pulumi.String("mariadb"),
-		"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
-		"ctfer.io/stack-name":          pulumi.String(ctx.Stack()),
+		"app.kubernetes.io/name": pulumi.String("mariadb"),
+		"ctfer.io/stack-name":    pulumi.String(ctx.Stack()),
 	}.ToStringMapOutput()
 
 	return ctx.RegisterResourceOutputs(mdb, pulumi.Map{
