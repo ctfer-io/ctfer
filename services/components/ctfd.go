@@ -217,7 +217,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 	ctfd.PodLabels = pulumi.StringMap{
 		"app.kubernetes.io/name":      pulumi.String("ctfd"),
 		"app.kubernetes.io/component": pulumi.String("ctfd"),
-		"app.kubernetes.io/part-of":   pulumi.String("monitoring"),
+		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
 		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 		"redis-client":                pulumi.String("true"), // netpol podSelector
 		"mariadb-client":              pulumi.String("true"), // netpol podSelector
@@ -227,14 +227,15 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Name:      pulumi.String("ctfd-sts"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"app.kubernetes.io/name":      pulumi.String("ctfd"),
+				"app.kubernetes.io/component": pulumi.String("ctfd"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
 		Spec: appsv1.StatefulSetSpecArgs{
 			Selector: metav1.LabelSelectorArgs{
-				MatchLabels: pulumi.StringMap{
-					"ctfer/infra": pulumi.String("ctfd"),
-				},
+				MatchLabels: ctfd.PodLabels,
 			},
 			Replicas: args.CTFdReplicas,
 			Template: &corev1.PodTemplateSpecArgs{
