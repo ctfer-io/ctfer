@@ -239,7 +239,7 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 }
 
 func (mdb *MariaDB) outputs(ctx *pulumi.Context) error {
-	mdb.URL = pulumi.Sprintf("mysql+pymysql://%s:%s@mariadb-headless/ctfd", mdb.userName, mdb.userPass.Result)
+	mdb.URL = pulumi.Sprintf("mysql+pymysql://%s:%s@mariadb-headless:3306/ctfd", mdb.userName, mdb.userPass.Result)
 	mdb.PodLabels = pulumi.StringMap{
 		"app.kubernetes.io/components": pulumi.String("mariadb"),
 		"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
