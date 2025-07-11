@@ -26,7 +26,8 @@ type CTFer struct {
 	ctfdNetpol *netwv1.NetworkPolicy
 
 	// URL contains the CTFd's URL once provided.
-	URL pulumi.StringOutput
+	URL       pulumi.StringOutput
+	PodLabels pulumi.StringMapOutput
 }
 
 type CTFerArgs struct {
@@ -226,9 +227,11 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 
 func (ctfer *CTFer) outputs(ctx *pulumi.Context) error {
 	ctfer.URL = ctfer.ctfd.URL
+	ctfer.PodLabels = ctfer.ctfd.PodLabels
 
 	return ctx.RegisterResourceOutputs(ctfer, pulumi.Map{
-		"url": ctfer.URL,
+		"url":       ctfer.URL,
+		"podLabels": ctfer.PodLabels,
 	})
 }
 

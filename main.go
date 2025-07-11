@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/ctfer-io/ctfer/services"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -45,10 +43,8 @@ func main() {
 		if err != nil {
 			return err
 		}
-		ctfer.URL.ApplyT(func(url string) string {
-			fmt.Println(url)
-			return url
-		})
+
+		ctx.Export("url", ctfer.URL)
 		return nil
 	})
 }
