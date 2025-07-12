@@ -1,11 +1,17 @@
 package services
 
 import (
+	"net/url"
+	"strconv"
 	"sync"
 
-	"github.com/ctfer-io/ctfer/services/components"
 	"github.com/hashicorp/go-multierror"
+	"github.com/pkg/errors"
+	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	netwv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/ctfer-io/ctfer/services/components"
 )
 
 // CTFer is a pulumi Component that deploy a pre-configured CTFd stack
@@ -17,8 +23,11 @@ type CTFer struct {
 	redis *components.Redis
 	ctfd  *components.CTFd
 
+	ctfdNetpol *netwv1.NetworkPolicy
+
 	// URL contains the CTFd's URL once provided.
-	URL pulumi.StringOutput
+	URL       pulumi.StringOutput
+	PodLabels pulumi.StringMapOutput
 }
 
 type CTFerArgs struct {
@@ -37,6 +46,9 @@ type CTFerArgs struct {
 	Hostname         pulumi.StringInput
 	ChartsRepository pulumi.StringInput
 	ImagesRepository pulumi.StringInput
+
+	IngressNamespace pulumi.StringInput
+	IngressLabels    pulumi.StringMapInput
 }
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
@@ -124,20 +136,20 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 	}
 
 	ctfer.ctfd, err = components.NewCTFd(ctx, "platform", &components.CTFdArgs{
-		Namespace:         args.Namespace,
-		MariaDBSecretName: ctfer.maria.SecretName,
-		RedisSecretName:   ctfer.redis.SecretName,
-		Image:             args.CTFdImage,
-		Registry:          args.ImagesRepository,
-		Hostname:          args.Hostname,
-		CTFdCrt:           args.CTFdCrt,
-		CTFdKey:           args.CTFdKey,
-		CTFdStorageSize:   args.CTFdStorageSize,
-		CTFdWorkers:       args.CTFdWorkers,
-		CTFdReplicas:      args.CTFdReplicas,
-		ChallManagerUrl:   args.ChallManagerUrl,
-		CTFdRequests:      args.CTFdRequests,
-		CTFdLimits:        args.CTFdLimits,
+		Namespace:       args.Namespace,
+		RedisURL:        ctfer.redis.URL,
+		MariaDBURL:      ctfer.maria.URL,
+		Image:           args.CTFdImage,
+		Registry:        args.ImagesRepository,
+		Hostname:        args.Hostname,
+		CTFdCrt:         args.CTFdCrt,
+		CTFdKey:         args.CTFdKey,
+		CTFdStorageSize: args.CTFdStorageSize,
+		CTFdWorkers:     args.CTFdWorkers,
+		CTFdReplicas:    args.CTFdReplicas,
+		ChallManagerUrl: args.ChallManagerUrl,
+		CTFdRequests:    args.CTFdRequests,
+		CTFdLimits:      args.CTFdLimits,
 	}, append(opts, pulumi.DependsOn([]pulumi.Resource{
 		ctfer.maria,
 		ctfer.redis,
@@ -146,17 +158,121 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		return
 	}
 
-	// TODO top-level NetworkPolicies
+	// Top-level NetworkPolicies
 	// - IngressController -> CTFd
 	// - CTFd -> Redis
 	// - CTFd -> MariaDB
+	ctfer.ctfdNetpol, err = netwv1.NewNetworkPolicy(ctx, "ctfd-netpol", &netwv1.NetworkPolicyArgs{
+		Metadata: metav1.ObjectMetaArgs{
+			Namespace: args.Namespace,
+			Labels: pulumi.StringMap{
+				"app.kubernetes.io/component": pulumi.String("ctfer"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
+			},
+		},
+		Spec: netwv1.NetworkPolicySpecArgs{
+			PolicyTypes: pulumi.ToStringArray([]string{
+				"Ingress",
+				"Egress",
+			}),
+			PodSelector: metav1.LabelSelectorArgs{
+				MatchLabels: ctfer.ctfd.PodLabels,
+			},
+			Ingress: netwv1.NetworkPolicyIngressRuleArray{
+				// Ingress ->
+				netwv1.NetworkPolicyIngressRuleArgs{
+					From: netwv1.NetworkPolicyPeerArray{
+						netwv1.NetworkPolicyPeerArgs{
+							NamespaceSelector: metav1.LabelSelectorArgs{
+								MatchLabels: pulumi.StringMap{
+									"kubernetes.io/metadata.name": args.IngressNamespace,
+								},
+							},
+							PodSelector: metav1.LabelSelectorArgs{
+								MatchLabels: args.IngressLabels,
+							},
+						},
+					},
+					Ports: netwv1.NetworkPolicyPortArray{
+						netwv1.NetworkPolicyPortArgs{
+							Port: pulumi.Int(8000),
+						},
+					},
+				},
+			},
+			Egress: netwv1.NetworkPolicyEgressRuleArray{
+				// -> Redis
+				netwv1.NetworkPolicyEgressRuleArgs{
+					To: netwv1.NetworkPolicyPeerArray{
+						netwv1.NetworkPolicyPeerArgs{
+							NamespaceSelector: metav1.LabelSelectorArgs{
+								MatchLabels: pulumi.StringMap{
+									"kubernetes.io/metadata.name": args.Namespace,
+								},
+							},
+							PodSelector: metav1.LabelSelectorArgs{
+								MatchLabels: ctfer.redis.PodLabels,
+							},
+						},
+					},
+					Ports: netwv1.NetworkPolicyPortArray{
+						netwv1.NetworkPolicyPortArgs{
+							Port:     parseURLPort(ctfer.redis.URL),
+							Protocol: pulumi.String("TCP"),
+						},
+					},
+				},
+				// -> MariaDB
+				netwv1.NetworkPolicyEgressRuleArgs{
+					To: netwv1.NetworkPolicyPeerArray{
+						netwv1.NetworkPolicyPeerArgs{
+							NamespaceSelector: metav1.LabelSelectorArgs{
+								MatchLabels: pulumi.StringMap{
+									"kubernetes.io/metadata.name": args.Namespace,
+								},
+							},
+							PodSelector: metav1.LabelSelectorArgs{
+								MatchLabels: ctfer.maria.PodLabels,
+							},
+						},
+					},
+					Ports: netwv1.NetworkPolicyPortArray{
+						netwv1.NetworkPolicyPortArgs{
+							Port:     parseURLPort(ctfer.maria.URL),
+							Protocol: pulumi.String("TCP"),
+						},
+					},
+				},
+			},
+		},
+	}, opts...)
+
 	return
 }
 
 func (ctfer *CTFer) outputs(ctx *pulumi.Context) error {
 	ctfer.URL = ctfer.ctfd.URL
+	ctfer.PodLabels = ctfer.ctfd.PodLabels
 
 	return ctx.RegisterResourceOutputs(ctfer, pulumi.Map{
-		"url": ctfer.URL,
+		"url":       ctfer.URL,
+		"podLabels": ctfer.PodLabels,
 	})
+}
+
+// parseURLPort parses the input endpoint formatted as a URL to return its port.
+// Example: http://some.thing:port -> port
+func parseURLPort(edp pulumi.StringOutput) pulumi.IntOutput {
+	return edp.ToStringOutput().ApplyT(func(edp string) (int, error) {
+		u, err := url.Parse(edp)
+		if err != nil {
+			return 0, errors.Wrapf(err, "parsing endpoint %s as a URL", edp)
+		}
+		p, err := strconv.Atoi(u.Port())
+		if err != nil {
+			return 0, errors.Wrapf(err, "parsing endpoint %s for port", edp)
+		}
+		return p, nil
+	}).(pulumi.IntOutput)
 }

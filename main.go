@@ -1,21 +1,23 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/ctfer-io/ctfer/services"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	netwv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
 func main() {
-	pulumi.Run(func(ctx *pulumi.Context) (err error) {
-		cfg := InitConfig(ctx)
+	pulumi.Run(func(ctx *pulumi.Context) error {
+		cfg, err := loadConfig(ctx)
+		if err != nil {
+			return err
+		}
 
 		// Create CTF's namespace
-		if _, err := corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
+		ns, err := corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
 			Metadata: metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
 					"ctfer.io/app-name": pulumi.String("ctfd"),
@@ -23,7 +25,56 @@ func main() {
 				},
 				Name: pulumi.String(cfg.Namespace),
 			},
-		}); err != nil {
+		})
+		if err != nil {
+			return err
+		}
+
+		// Grant DNS resolution
+		_, err = netwv1.NewNetworkPolicy(ctx, "dns", &netwv1.NetworkPolicyArgs{
+			Metadata: metav1.ObjectMetaArgs{
+				Namespace: ns.Metadata.Name().Elem(),
+				Labels: pulumi.StringMap{
+					"ctfer.io/app-name": pulumi.String("ctfd"),
+					"ctfer.io/part-of":  pulumi.String("ctfer"),
+				},
+			},
+			Spec: netwv1.NetworkPolicySpecArgs{
+				PolicyTypes: pulumi.ToStringArray([]string{
+					"Egress",
+				}),
+				PodSelector: metav1.LabelSelectorArgs{},
+				Egress: netwv1.NetworkPolicyEgressRuleArray{
+					netwv1.NetworkPolicyEgressRuleArgs{
+						To: netwv1.NetworkPolicyPeerArray{
+							netwv1.NetworkPolicyPeerArgs{
+								NamespaceSelector: metav1.LabelSelectorArgs{
+									MatchLabels: pulumi.StringMap{
+										"kubernetes.io/metadata.name": pulumi.String("kube-system"),
+									},
+								},
+								PodSelector: metav1.LabelSelectorArgs{
+									MatchLabels: pulumi.StringMap{
+										"k8s-app": pulumi.String("kube-dns"),
+									},
+								},
+							},
+						},
+						Ports: netwv1.NetworkPolicyPortArray{
+							netwv1.NetworkPolicyPortArgs{
+								Port:     pulumi.Int(53),
+								Protocol: pulumi.String("UDP"),
+							},
+							netwv1.NetworkPolicyPortArgs{
+								Port:     pulumi.Int(53),
+								Protocol: pulumi.String("TCP"),
+							},
+						},
+					},
+				},
+			},
+		})
+		if err != nil {
 			return err
 		}
 
@@ -41,14 +92,14 @@ func main() {
 			ChallManagerUrl:  pulumi.String(cfg.ChallManagerUrl),
 			CTFdRequests:     pulumi.ToStringMap(cfg.CTFdRequests),
 			CTFdLimits:       pulumi.ToStringMap(cfg.CTFdLimits),
+			IngressNamespace: pulumi.String(cfg.IngressNamespace),
+			IngressLabels:    pulumi.ToStringMap(cfg.IngressLabels),
 		})
 		if err != nil {
 			return err
 		}
-		ctfer.URL.ApplyT(func(url string) string {
-			fmt.Println(url)
-			return url
-		})
+
+		ctx.Export("url", ctfer.URL)
 		return nil
 	})
 }
@@ -69,9 +120,11 @@ type Config struct {
 	CTFdWorkers      int
 	CTFdRequests     map[string]string
 	CTFdLimits       map[string]string
+	IngressNamespace string
+	IngressLabels    map[string]string
 }
 
-func InitConfig(ctx *pulumi.Context) *Config {
+func loadConfig(ctx *pulumi.Context) (*Config, error) {
 	cfg := config.New(ctx, "")
 	c := &Config{
 		Namespace:        cfg.Get("namespace"),
@@ -85,14 +138,19 @@ func InitConfig(ctx *pulumi.Context) *Config {
 		CTFdStorageSize:  cfg.Get("ctfd-storage-size"),
 		CTFdReplicas:     cfg.GetInt("ctfd-replicas"),
 		CTFdWorkers:      cfg.GetInt("ctfd-workers"),
+		IngressNamespace: cfg.Get("ingress-namespace"),
 	}
 	if err := cfg.TryObject("ctfd-requests", &c.CTFdRequests); err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if err := cfg.TryObject("ctfd-limits", &c.CTFdLimits); err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return c
+	if err := cfg.TryObject("ingress-labels", &c.IngressLabels); err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }

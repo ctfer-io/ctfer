@@ -28,23 +28,25 @@ type CTFd struct {
 
 	// URL contains the CTFd's URL once provided.
 	URL pulumi.StringOutput
+
+	PodLabels pulumi.StringMapOutput
 }
 
 type CTFdArgs struct {
-	Namespace         pulumi.StringInput
-	RedisSecretName   pulumi.StringInput
-	MariaDBSecretName pulumi.StringInput
-	Image             pulumi.StringInput
-	Registry          pulumi.StringInput
-	CTFdCrt           pulumi.StringInput
-	CTFdKey           pulumi.StringInput
-	Hostname          pulumi.StringInput
-	CTFdStorageSize   pulumi.StringInput
-	CTFdWorkers       pulumi.IntInput
-	CTFdReplicas      pulumi.IntInput
-	ChallManagerUrl   pulumi.StringInput
-	CTFdLimits        pulumi.StringMapInput
-	CTFdRequests      pulumi.StringMapInput
+	Namespace       pulumi.StringInput
+	RedisURL        pulumi.StringInput
+	MariaDBURL      pulumi.StringInput
+	Image           pulumi.StringInput
+	Registry        pulumi.StringInput
+	CTFdCrt         pulumi.StringInput
+	CTFdKey         pulumi.StringInput
+	Hostname        pulumi.StringInput
+	CTFdStorageSize pulumi.StringInput
+	CTFdWorkers     pulumi.IntInput
+	CTFdReplicas    pulumi.IntInput
+	ChallManagerUrl pulumi.StringInput
+	CTFdLimits      pulumi.StringMapInput
+	CTFdRequests    pulumi.StringMapInput
 
 	registry pulumi.StringOutput
 	image    pulumi.StringOutput
@@ -144,7 +146,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Name:      pulumi.String("ctfd-secret"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"app.kubernetes.io/component": pulumi.String("ctfd"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
@@ -160,7 +164,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Name:      pulumi.String("ctfd-pvc"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"app.kubernetes.io/component": pulumi.String("ctfd"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpecArgs{
@@ -181,25 +187,15 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 
 	envs := corev1.EnvVarArray{
 		corev1.EnvVarArgs{
-			Name: pulumi.String("DATABASE_URL"),
-			ValueFrom: corev1.EnvVarSourceArgs{
-				SecretKeyRef: corev1.SecretKeySelectorArgs{
-					Name: args.MariaDBSecretName,
-					Key:  pulumi.String("mariadb-url"),
-				},
-			},
+			Name:  pulumi.String("DATABASE_URL"),
+			Value: args.MariaDBURL,
 		},
 		corev1.EnvVarArgs{
-			Name: pulumi.String("REDIS_URL"),
-			ValueFrom: corev1.EnvVarSourceArgs{
-				SecretKeyRef: corev1.SecretKeySelectorArgs{
-					Name: args.RedisSecretName,
-					Key:  pulumi.String("redis-url"),
-				},
-			},
+			Name:  pulumi.String("REDIS_URL"),
+			Value: args.RedisURL,
 		},
 		corev1.EnvVarArgs{
-			Name:  pulumi.String("UPLOAD_FOLDER"), // contains scenario.zip
+			Name:  pulumi.String("UPLOAD_FOLDER"),
 			Value: pulumi.String("/var/uploads"),
 		},
 		corev1.EnvVarArgs{
@@ -222,27 +218,34 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		})
 	}
 
+	ctfd.PodLabels = pulumi.StringMap{
+		"app.kubernetes.io/name":      pulumi.String("ctfd"),
+		"app.kubernetes.io/component": pulumi.String("ctfd"),
+		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
+		"redis-client":                pulumi.String("true"), // netpol podSelector
+		"mariadb-client":              pulumi.String("true"), // netpol podSelector
+	}.ToStringMapOutput()
 	ctfd.sts, err = appsv1.NewStatefulSet(ctx, "ctfd-sts", &appsv1.StatefulSetArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Name:      pulumi.String("ctfd-sts"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"app.kubernetes.io/name":      pulumi.String("ctfd"),
+				"app.kubernetes.io/component": pulumi.String("ctfd"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
 		Spec: appsv1.StatefulSetSpecArgs{
 			Selector: metav1.LabelSelectorArgs{
-				MatchLabels: pulumi.StringMap{
-					"ctfer/infra": pulumi.String("ctfd"),
-				},
+				MatchLabels: ctfd.PodLabels,
 			},
 			Replicas: args.CTFdReplicas,
 			Template: &corev1.PodTemplateSpecArgs{
 				Metadata: &metav1.ObjectMetaArgs{
 					Namespace: args.Namespace,
-					Labels: pulumi.StringMap{
-						"ctfer/infra": pulumi.String("ctfd"),
-					},
+					Labels:    ctfd.PodLabels,
 				},
 				Spec: &corev1.PodSpecArgs{
 					Containers: corev1.ContainerArray{
@@ -323,15 +326,15 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 	ctfd.svc, err = corev1.NewService(ctx, "ctfd-svc", &corev1.ServiceArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"app.kubernetes.io/component": pulumi.String("ctfd"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 			Name:      pulumi.String("ctfd-svc"),
 			Namespace: args.Namespace,
 		},
 		Spec: &corev1.ServiceSpecArgs{
-			Selector: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
-			},
+			Selector: ctfd.PodLabels,
 			Ports: corev1.ServicePortArray{
 				corev1.ServicePortArgs{
 					TargetPort: pulumi.Int(8000),
@@ -353,7 +356,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Metadata: metav1.ObjectMetaArgs{
 				Namespace: args.Namespace,
 				Labels: pulumi.StringMap{
-					"ctfer/infra": pulumi.String("ctfd"),
+					"app.kubernetes.io/component": pulumi.String("ctfd"),
+					"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+					"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 				},
 			},
 			Type: pulumi.String("kubernetes.io/tls"),
@@ -375,7 +380,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 	ctfd.ing, err = netwv1.NewIngress(ctx, "ctfd-ingress", &netwv1.IngressArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"app.kubernetes.io/component": pulumi.String("ctfd"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 			Name:      pulumi.String("ctfd-ingress"),
 			Namespace: args.Namespace,
@@ -422,7 +429,10 @@ func (ctfd *CTFd) outputs(ctx *pulumi.Context) error {
 		return *spec.Rules[0].Host
 	}).(pulumi.StringOutput)
 
+	// ctfd.PodLabels are set ahead of deployment to avoid deadlocks with mariadb
+
 	return ctx.RegisterResourceOutputs(ctfd, pulumi.Map{
-		"url": ctfd.URL,
+		"url":       ctfd.URL,
+		"podLabels": ctfd.PodLabels,
 	})
 }

@@ -24,7 +24,8 @@ type Redis struct {
 	sec   *corev1.Secret
 	chart *helmv4.Chart
 
-	SecretName pulumi.StringOutput
+	URL       pulumi.StringOutput
+	PodLabels pulumi.StringMapOutput
 }
 
 type RedisArgs struct {
@@ -123,11 +124,6 @@ func (rd *Redis) check(_ *RedisArgs) error {
 }
 
 func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.ResourceOption) (err error) {
-	redisLabels := pulumi.StringMap{
-		"ctfer.io/app-name": pulumi.String("redis"),
-		"ctfer.io/part-of":  pulumi.String("ctfer"),
-	}
-
 	// => Secret
 	rd.pass, err = random.NewRandomPassword(ctx, "redis-pass", &random.RandomPasswordArgs{
 		Length:  pulumi.Int(64),
@@ -139,14 +135,16 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 
 	rd.sec, err = corev1.NewSecret(ctx, "redis-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Labels:    redisLabels,
-			Name:      pulumi.String("redis-secret"),
 			Namespace: args.Namespace,
+			Labels: pulumi.StringMap{
+				"app.kubernetes.io/component": pulumi.String("redis"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
+			},
 		},
 		Type: pulumi.String("Opaque"),
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
 			"redis-password": rd.pass.Result,
-			"redis-url":      pulumi.Sprintf("redis://:%s@redis-master:6379", rd.pass.Result),
 		}),
 	}, opts...)
 	if err != nil {
@@ -197,6 +195,13 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 				},
 			},
 			"architecture": pulumi.String("standalone"), // we don't use replicas for RO actions, TODO enable sentinel
+			"networkPolicy": pulumi.Map{
+				"allowExternal":       pulumi.Bool(false),
+				"allowExternalEgress": pulumi.Bool(false),
+			},
+			"commonLabels": pulumi.StringMap{
+				"ctfer.io/stack-name": pulumi.String(ctx.Stack()),
+			},
 		},
 	}, opts...)
 	if err != nil {
@@ -207,9 +212,14 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 }
 
 func (rd *Redis) outputs(ctx *pulumi.Context) error {
-	rd.SecretName = rd.sec.Metadata.Name().Elem()
+	rd.URL = pulumi.Sprintf("redis://:%s@redis-master:6379", rd.pass.Result)
+	rd.PodLabels = pulumi.StringMap{
+		"app.kubernetes.io/name": pulumi.String("redis"),
+		"ctfer.io/stack-name":    pulumi.String(ctx.Stack()),
+	}.ToStringMapOutput()
 
 	return ctx.RegisterResourceOutputs(rd, pulumi.Map{
-		"secretName": rd.SecretName,
+		"url":       rd.URL,
+		"podLabels": rd.PodLabels,
 	})
 }
