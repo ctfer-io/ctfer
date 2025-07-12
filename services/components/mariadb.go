@@ -199,10 +199,11 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 			"primary": pulumi.Map{
 				"persistence": pulumi.Map{
 					"storageClass": pulumi.String("longhorn"),
-					"accessModes": pulumi.StringArray{
-						pulumi.String("ReadWriteMany"),
-					},
+					"accessModes": pulumi.ToStringArray([]string{
+						"ReadWriteMany",
+					}),
 				},
+				"extraFlags": pulumi.String("--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci"),
 				// Taint-Based Eviction
 				"tolerations": pulumi.MapArray{
 					pulumi.Map{

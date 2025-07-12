@@ -143,7 +143,6 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 
 	ctfd.sec, err = corev1.NewSecret(ctx, "ctfd-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.String("ctfd-secret"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
 				"app.kubernetes.io/component": pulumi.String("ctfd"),
@@ -151,9 +150,13 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
-		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
+		Data: pulumi.StringMap{
 			"secret_key": ctfd.secRand.B64Std,
-		}),
+		},
+		StringData: pulumi.StringMap{
+			"redis-url":   args.RedisURL,
+			"mariadb-url": args.MariaDBURL,
+		},
 	}, opts...)
 	if err != nil {
 		return
@@ -161,7 +164,6 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 
 	ctfd.pvc, err = corev1.NewPersistentVolumeClaim(ctx, "ctfd-pvc", &corev1.PersistentVolumeClaimArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.String("ctfd-pvc"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
 				"app.kubernetes.io/component": pulumi.String("ctfd"),
@@ -187,12 +189,22 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 
 	envs := corev1.EnvVarArray{
 		corev1.EnvVarArgs{
-			Name:  pulumi.String("DATABASE_URL"),
-			Value: args.MariaDBURL,
+			Name: pulumi.String("DATABASE_URL"),
+			ValueFrom: corev1.EnvVarSourceArgs{
+				SecretKeyRef: corev1.SecretKeySelectorArgs{
+					Name: ctfd.sec.Metadata.Name(),
+					Key:  pulumi.String("mariadb-url"),
+				},
+			},
 		},
 		corev1.EnvVarArgs{
-			Name:  pulumi.String("REDIS_URL"),
-			Value: args.RedisURL,
+			Name: pulumi.String("REDIS_URL"),
+			ValueFrom: corev1.EnvVarSourceArgs{
+				SecretKeyRef: corev1.SecretKeySelectorArgs{
+					Name: ctfd.sec.Metadata.Name(),
+					Key:  pulumi.String("redis-url"),
+				},
+			},
 		},
 		corev1.EnvVarArgs{
 			Name:  pulumi.String("UPLOAD_FOLDER"),
@@ -228,7 +240,6 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 	}.ToStringMapOutput()
 	ctfd.sts, err = appsv1.NewStatefulSet(ctx, "ctfd-sts", &appsv1.StatefulSetArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.String("ctfd-sts"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
 				"app.kubernetes.io/name":      pulumi.String("ctfd"),
@@ -304,13 +315,13 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 						corev1.VolumeArgs{
 							Name: pulumi.String("secret-key"),
 							Secret: corev1.SecretVolumeSourceArgs{
-								SecretName: pulumi.String("ctfd-secret"),
+								SecretName: ctfd.sec.Metadata.Name(),
 							},
 						},
 						corev1.VolumeArgs{
 							Name: pulumi.String("assets"),
 							PersistentVolumeClaim: corev1.PersistentVolumeClaimVolumeSourceArgs{
-								ClaimName: pulumi.String("ctfd-pvc"),
+								ClaimName: ctfd.pvc.Metadata.Name().Elem(),
 							},
 						},
 					},
@@ -330,7 +341,6 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
 				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
-			Name:      pulumi.String("ctfd-svc"),
 			Namespace: args.Namespace,
 		},
 		Spec: &corev1.ServiceSpecArgs{
@@ -384,7 +394,6 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
 				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
-			Name:      pulumi.String("ctfd-ingress"),
 			Namespace: args.Namespace,
 			Annotations: pulumi.ToStringMap(map[string]string{
 				"pulumi.com/skipAwait": "true",
@@ -402,7 +411,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 								Backend: netwv1.IngressBackendArgs{
 									Service: netwv1.IngressServiceBackendArgs{
 										// Name: pulumi.String("ctfd-keda-svc"),
-										Name: pulumi.String("ctfd-svc"),
+										Name: ctfd.svc.Metadata.Name().Elem(),
 										Port: netwv1.ServiceBackendPortArgs{
 											Name: pulumi.String("web"),
 											// Number: pulumi.Int(8080),
