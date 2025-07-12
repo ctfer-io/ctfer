@@ -328,9 +328,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Namespace: args.Namespace,
 		},
 		Spec: &corev1.ServiceSpecArgs{
-			Selector: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
-			},
+			Selector: ctfd.PodLabels,
 			Ports: corev1.ServicePortArray{
 				corev1.ServicePortArgs{
 					TargetPort: pulumi.Int(8000),
