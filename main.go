@@ -4,6 +4,7 @@ import (
 	"github.com/ctfer-io/ctfer/services"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
+	netwv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -16,7 +17,7 @@ func main() {
 		}
 
 		// Create CTF's namespace
-		if _, err := corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
+		ns, err := corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
 			Metadata: metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
 					"ctfer.io/app-name": pulumi.String("ctfd"),
@@ -24,7 +25,56 @@ func main() {
 				},
 				Name: pulumi.String(cfg.Namespace),
 			},
-		}); err != nil {
+		})
+		if err != nil {
+			return err
+		}
+
+		// Grant DNS resolution
+		_, err = netwv1.NewNetworkPolicy(ctx, "dns", &netwv1.NetworkPolicyArgs{
+			Metadata: metav1.ObjectMetaArgs{
+				Namespace: ns.Metadata.Name().Elem(),
+				Labels: pulumi.StringMap{
+					"ctfer.io/app-name": pulumi.String("ctfd"),
+					"ctfer.io/part-of":  pulumi.String("ctfer"),
+				},
+			},
+			Spec: netwv1.NetworkPolicySpecArgs{
+				PolicyTypes: pulumi.ToStringArray([]string{
+					"Egress",
+				}),
+				PodSelector: metav1.LabelSelectorArgs{},
+				Egress: netwv1.NetworkPolicyEgressRuleArray{
+					netwv1.NetworkPolicyEgressRuleArgs{
+						To: netwv1.NetworkPolicyPeerArray{
+							netwv1.NetworkPolicyPeerArgs{
+								NamespaceSelector: metav1.LabelSelectorArgs{
+									MatchLabels: pulumi.StringMap{
+										"kubernetes.io/metadata.name": pulumi.String("kube-system"),
+									},
+								},
+								PodSelector: metav1.LabelSelectorArgs{
+									MatchLabels: pulumi.StringMap{
+										"k8s-app": pulumi.String("kube-dns"),
+									},
+								},
+							},
+						},
+						Ports: netwv1.NetworkPolicyPortArray{
+							netwv1.NetworkPolicyPortArgs{
+								Port:     pulumi.Int(53),
+								Protocol: pulumi.String("UDP"),
+							},
+							netwv1.NetworkPolicyPortArgs{
+								Port:     pulumi.Int(53),
+								Protocol: pulumi.String("TCP"),
+							},
+						},
+					},
+				},
+			},
+		})
+		if err != nil {
 			return err
 		}
 
@@ -88,6 +138,7 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 		CTFdStorageSize:  cfg.Get("ctfd-storage-size"),
 		CTFdReplicas:     cfg.GetInt("ctfd-replicas"),
 		CTFdWorkers:      cfg.GetInt("ctfd-workers"),
+		IngressNamespace: cfg.Get("ingress-namespace"),
 	}
 	if err := cfg.TryObject("ctfd-requests", &c.CTFdRequests); err != nil {
 		return nil, err
