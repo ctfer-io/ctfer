@@ -146,7 +146,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Name:      pulumi.String("ctfd-secret"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"app.kubernetes.io/component": pulumi.String("ctfd"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
@@ -162,7 +164,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Name:      pulumi.String("ctfd-pvc"),
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"app.kubernetes.io/component": pulumi.String("ctfd"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpecArgs{
@@ -191,7 +195,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Value: args.RedisURL,
 		},
 		corev1.EnvVarArgs{
-			Name:  pulumi.String("UPLOAD_FOLDER"), // contains scenario.zip
+			Name:  pulumi.String("UPLOAD_FOLDER"),
 			Value: pulumi.String("/var/uploads"),
 		},
 		corev1.EnvVarArgs{
@@ -322,7 +326,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 	ctfd.svc, err = corev1.NewService(ctx, "ctfd-svc", &corev1.ServiceArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"app.kubernetes.io/component": pulumi.String("ctfd"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 			Name:      pulumi.String("ctfd-svc"),
 			Namespace: args.Namespace,
@@ -350,7 +356,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Metadata: metav1.ObjectMetaArgs{
 				Namespace: args.Namespace,
 				Labels: pulumi.StringMap{
-					"ctfer/infra": pulumi.String("ctfd"),
+					"app.kubernetes.io/component": pulumi.String("ctfd"),
+					"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+					"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 				},
 			},
 			Type: pulumi.String("kubernetes.io/tls"),
@@ -372,7 +380,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 	ctfd.ing, err = netwv1.NewIngress(ctx, "ctfd-ingress", &netwv1.IngressArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Labels: pulumi.StringMap{
-				"ctfer/infra": pulumi.String("ctfd"),
+				"app.kubernetes.io/component": pulumi.String("ctfd"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 			Name:      pulumi.String("ctfd-ingress"),
 			Namespace: args.Namespace,

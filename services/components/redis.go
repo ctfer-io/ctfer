@@ -137,9 +137,9 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 		Metadata: metav1.ObjectMetaArgs{
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"app.kubernetes.io/components": pulumi.String("redis"),
-				"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
-				"ctfer.io/stack-name":          pulumi.String(ctx.Stack()),
+				"app.kubernetes.io/component": pulumi.String("redis"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
 		Type: pulumi.String("Opaque"),

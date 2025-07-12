@@ -166,9 +166,9 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		Metadata: metav1.ObjectMetaArgs{
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"app.kubernetes.io/components": pulumi.String("ctfer"),
-				"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
-				"ctfer.io/stack-name":          pulumi.String(ctx.Stack()),
+				"app.kubernetes.io/component": pulumi.String("ctfer"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
 		Spec: netwv1.NetworkPolicySpecArgs{

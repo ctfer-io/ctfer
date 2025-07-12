@@ -158,9 +158,9 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 		Metadata: metav1.ObjectMetaArgs{
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
-				"app.kubernetes.io/components": pulumi.String("mariadb"),
-				"app.kubernetes.io/part-of":    pulumi.String("ctfer"),
-				"ctfer.io/stack-name":          pulumi.String(ctx.Stack()),
+				"app.kubernetes.io/component": pulumi.String("mariadb"),
+				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
 		Type: pulumi.String("Opaque"),
