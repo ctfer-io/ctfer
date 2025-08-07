@@ -34,6 +34,9 @@ type RedisArgs struct {
 	ChartVersion     pulumi.StringInput
 	Registry         pulumi.StringInput
 
+	StorageClassName pulumi.StringInput
+	storageClassName pulumi.StringOutput
+
 	registry pulumi.StringOutput
 	chartUrl pulumi.StringOutput
 }
@@ -90,6 +93,18 @@ func (rd *Redis) defaults(args *RedisArgs) *RedisArgs {
 				str = str + "/"
 			}
 			return str
+		}).(pulumi.StringOutput)
+	}
+
+	// Don't default storage class name -> will select the default one
+	// on the K8s cluster.
+	args.storageClassName = pulumi.String(defaultStorageClassName).ToStringOutput()
+	if args.StorageClassName != nil {
+		args.storageClassName = args.StorageClassName.ToStringOutput().ApplyT(func(scm string) string {
+			if scm == "" {
+				return defaultStorageClassName
+			}
+			return scm
 		}).(pulumi.StringOutput)
 	}
 
@@ -173,7 +188,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 			},
 			"master": pulumi.Map{
 				"persistence": pulumi.Map{
-					"storageClass": pulumi.String("longhorn"), // make the master deployable on all nodes if crash
+					"storageClass": args.storageClassName, // make the master deployable on all nodes if crash
 					"accessModes": pulumi.StringArray{
 						pulumi.String("ReadWriteMany"), // make the master deployable on all nodes if crash
 					},

@@ -83,6 +83,7 @@ func main() {
 			Namespace:        pulumi.String(cfg.Namespace),
 			CTFdImage:        pulumi.String(cfg.CTFdImage),
 			Hostname:         pulumi.String(cfg.Hostname),
+			StorageClassName: pulumi.String(cfg.StorageClassName),
 			CTFdCrt:          cfg.CTFdCrt,
 			CTFdKey:          cfg.CTFdKey,
 			CTFdStorageSize:  pulumi.String(cfg.CTFdStorageSize),
@@ -121,6 +122,7 @@ type (
 		Hostname         string
 		ImagesRepository string
 		ChartsRepository string
+		StorageClassName string
 		CTFdImage        string
 		ChallManagerUrl  string
 		CTFdStorageSize  string
@@ -149,6 +151,7 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 		Hostname:         cfg.Get("hostname"),
 		ImagesRepository: cfg.Get("images-repository"),
 		ChartsRepository: cfg.Get("charts-repository"),
+		StorageClassName: cfg.Get("storage-class-name"),
 		CTFdImage:        cfg.Get("ctfd-image"),
 		ChallManagerUrl:  cfg.Get("chall-manager-url"),
 		CTFdCrt:          cfg.GetSecret("ctfd-crt"),

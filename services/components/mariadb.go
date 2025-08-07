@@ -37,6 +37,9 @@ type MariaDBArgs struct {
 	ChartVersion     pulumi.StringInput
 	Registry         pulumi.StringInput
 
+	StorageClassName pulumi.StringInput
+	storageClassName pulumi.StringOutput
+
 	registry pulumi.StringOutput
 	chartUrl pulumi.StringOutput
 }
@@ -94,6 +97,18 @@ func (mdb *MariaDB) defaults(args *MariaDBArgs) *MariaDBArgs {
 				str = str + "/"
 			}
 			return str
+		}).(pulumi.StringOutput)
+	}
+
+	// Don't default storage class name -> will select the default one
+	// on the K8s cluster.
+	args.storageClassName = pulumi.String(defaultStorageClassName).ToStringOutput()
+	if args.StorageClassName != nil {
+		args.storageClassName = args.StorageClassName.ToStringOutput().ApplyT(func(scm string) string {
+			if scm == "" {
+				return defaultStorageClassName
+			}
+			return scm
 		}).(pulumi.StringOutput)
 	}
 
@@ -198,7 +213,7 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 			},
 			"primary": pulumi.Map{
 				"persistence": pulumi.Map{
-					"storageClass": pulumi.String("longhorn"),
+					"storageClass": args.storageClassName,
 					"accessModes": pulumi.ToStringArray([]string{
 						"ReadWriteMany",
 					}),
