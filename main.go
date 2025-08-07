@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/ctfer-io/ctfer/services"
+	"github.com/ctfer-io/ctfer/services/common"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	netwv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
@@ -78,7 +79,7 @@ func main() {
 			return err
 		}
 
-		ctfer, err := services.NewCTFer(ctx, ctx.Stack(), &services.CTFerArgs{
+		ctferArgs := &services.CTFerArgs{
 			Namespace:        pulumi.String(cfg.Namespace),
 			CTFdImage:        pulumi.String(cfg.CTFdImage),
 			Hostname:         pulumi.String(cfg.Hostname),
@@ -94,7 +95,15 @@ func main() {
 			CTFdLimits:       pulumi.ToStringMap(cfg.CTFdLimits),
 			IngressNamespace: pulumi.String(cfg.IngressNamespace),
 			IngressLabels:    pulumi.ToStringMap(cfg.IngressLabels),
-		})
+		}
+		if cfg.Otel != nil {
+			ctferArgs.Otel = &common.OtelArgs{
+				ServiceName: pulumi.String(ctx.Stack()),
+				Endpoint:    pulumi.String(cfg.Otel.Endpoint),
+				Insecure:    cfg.Otel.Insecure,
+			}
+		}
+		ctfer, err := services.NewCTFer(ctx, ctx.Stack(), ctferArgs)
 		if err != nil {
 			return err
 		}
@@ -104,25 +113,34 @@ func main() {
 	})
 }
 
-// Config holds the values configured using pulumi CLI.
-type Config struct {
-	// Namespace in which ctfer will deploy the CTF.
-	Namespace        string
-	Hostname         string
-	ImagesRepository string
-	ChartsRepository string
-	CTFdImage        string
-	ChallManagerUrl  string
-	CTFdStorageSize  string
-	CTFdCrt          pulumi.StringInput
-	CTFdKey          pulumi.StringInput
-	CTFdReplicas     int
-	CTFdWorkers      int
-	CTFdRequests     map[string]string
-	CTFdLimits       map[string]string
-	IngressNamespace string
-	IngressLabels    map[string]string
-}
+type (
+	// Config holds the values configured using pulumi CLI.
+	Config struct {
+		// Namespace in which ctfer will deploy the CTF.
+		Namespace        string
+		Hostname         string
+		ImagesRepository string
+		ChartsRepository string
+		CTFdImage        string
+		ChallManagerUrl  string
+		CTFdStorageSize  string
+		CTFdCrt          pulumi.StringInput
+		CTFdKey          pulumi.StringInput
+		CTFdReplicas     int
+		CTFdWorkers      int
+		CTFdRequests     map[string]string
+		CTFdLimits       map[string]string
+		IngressNamespace string
+		IngressLabels    map[string]string
+
+		Otel *OtelConfig
+	}
+
+	OtelConfig struct {
+		Endpoint string `json:"endpoint"`
+		Insecure bool   `json:"insecure"`
+	}
+)
 
 func loadConfig(ctx *pulumi.Context) (*Config, error) {
 	cfg := config.New(ctx, "")
@@ -150,6 +168,11 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 
 	if err := cfg.TryObject("ingress-labels", &c.IngressLabels); err != nil {
 		return nil, err
+	}
+
+	var otelC OtelConfig
+	if err := cfg.TryObject("otel", &otelC); err == nil && otelC.Endpoint != "" {
+		c.Otel = &otelC
 	}
 
 	return c, nil

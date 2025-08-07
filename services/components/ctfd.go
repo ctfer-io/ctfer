@@ -4,6 +4,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ctfer-io/ctfer/services/common"
 	"github.com/hashicorp/go-multierror"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
@@ -47,6 +48,8 @@ type CTFdArgs struct {
 	ChallManagerUrl pulumi.StringInput
 	CTFdLimits      pulumi.StringMapInput
 	CTFdRequests    pulumi.StringMapInput
+
+	Otel *common.OtelArgs
 
 	registry pulumi.StringOutput
 	image    pulumi.StringOutput
@@ -228,6 +231,27 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Name:  pulumi.String("PLUGIN_SETTINGS_CM_API_URL"),
 			Value: args.ChallManagerUrl,
 		})
+	}
+
+	if args.Otel != nil {
+		envs = append(envs,
+			corev1.EnvVarArgs{
+				Name:  pulumi.String("OTEL_SERVICE_NAME"),
+				Value: args.Otel.ServiceName,
+			},
+			corev1.EnvVarArgs{
+				Name:  pulumi.String("OTEL_EXPORTER_OTLP_ENDPOINT"),
+				Value: args.Otel.Endpoint,
+			},
+		)
+		if args.Otel.Insecure {
+			envs = append(envs,
+				corev1.EnvVarArgs{
+					Name:  pulumi.String("OTEL_EXPORTER_OTLP_INSECURE"),
+					Value: pulumi.String("true"),
+				},
+			)
+		}
 	}
 
 	ctfd.PodLabels = pulumi.StringMap{
