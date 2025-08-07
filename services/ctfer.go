@@ -11,6 +11,7 @@ import (
 	netwv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
+	"github.com/ctfer-io/ctfer/services/common"
 	"github.com/ctfer-io/ctfer/services/components"
 )
 
@@ -49,6 +50,8 @@ type CTFerArgs struct {
 
 	IngressNamespace pulumi.StringInput
 	IngressLabels    pulumi.StringMapInput
+
+	Otel *common.OtelArgs
 }
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
@@ -135,7 +138,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		return
 	}
 
-	ctfer.ctfd, err = components.NewCTFd(ctx, "platform", &components.CTFdArgs{
+	ctfdArgs := &components.CTFdArgs{
 		Namespace:       args.Namespace,
 		RedisURL:        ctfer.redis.URL,
 		MariaDBURL:      ctfer.maria.URL,
@@ -150,7 +153,15 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		ChallManagerUrl: args.ChallManagerUrl,
 		CTFdRequests:    args.CTFdRequests,
 		CTFdLimits:      args.CTFdLimits,
-	}, append(opts, pulumi.DependsOn([]pulumi.Resource{
+	}
+	if args.Otel != nil {
+		ctfdArgs.Otel = &common.OtelArgs{
+			ServiceName: pulumi.Sprintf("%s-ctfd", args.Otel.ServiceName),
+			Endpoint:    args.Otel.Endpoint,
+			Insecure:    args.Otel.Insecure,
+		}
+	}
+	ctfer.ctfd, err = components.NewCTFd(ctx, "platform", ctfdArgs, append(opts, pulumi.DependsOn([]pulumi.Resource{
 		ctfer.maria,
 		ctfer.redis,
 	}))...)
