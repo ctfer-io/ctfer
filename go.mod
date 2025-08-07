@@ -6,7 +6,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/pkg/errors v0.9.1
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.23.0
-	github.com/pulumi/pulumi-random/sdk/v4 v4.18.2
+	github.com/pulumi/pulumi-random/sdk/v4 v4.18.3
 	github.com/pulumi/pulumi/sdk/v3 v3.187.0
 )
 
