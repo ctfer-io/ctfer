@@ -21,7 +21,7 @@ config:
   storage-class-name:
     type: string
     description: 'The StorageClassName for the PersistenVolumeClaim.'
-    default: 'standard'
+    default: ''
 
 ## CTFd Configuration
   ctfd-image:

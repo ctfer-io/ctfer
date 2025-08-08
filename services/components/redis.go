@@ -35,7 +35,7 @@ type RedisArgs struct {
 	Registry         pulumi.StringInput
 
 	StorageClassName pulumi.StringInput
-	storageClassName pulumi.StringOutput
+	storageClassName pulumi.StringPtrOutput
 
 	registry pulumi.StringOutput
 	chartUrl pulumi.StringOutput
@@ -98,14 +98,13 @@ func (rd *Redis) defaults(args *RedisArgs) *RedisArgs {
 
 	// Don't default storage class name -> will select the default one
 	// on the K8s cluster.
-	args.storageClassName = pulumi.String(defaultStorageClassName).ToStringOutput()
 	if args.StorageClassName != nil {
-		args.storageClassName = args.StorageClassName.ToStringOutput().ApplyT(func(scm string) string {
+		args.storageClassName = args.StorageClassName.ToStringOutput().ApplyT(func(scm string) *string {
 			if scm == "" {
-				return defaultStorageClassName
+				return nil
 			}
-			return scm
-		}).(pulumi.StringOutput)
+			return &scm
+		}).(pulumi.StringPtrOutput)
 	}
 
 	return args
