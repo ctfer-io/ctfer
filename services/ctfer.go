@@ -47,6 +47,7 @@ type CTFerArgs struct {
 	Hostname         pulumi.StringInput
 	ChartsRepository pulumi.StringInput
 	ImagesRepository pulumi.StringInput
+	StorageClassName pulumi.StringInput
 
 	IngressNamespace pulumi.StringInput
 	IngressLabels    pulumi.StringMapInput
@@ -81,6 +82,7 @@ func (ctfer *CTFer) defaults(args *CTFerArgs) *CTFerArgs {
 	if args == nil {
 		args = &CTFerArgs{}
 	}
+
 	return args
 }
 
@@ -120,6 +122,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		ChartsRepository: args.ChartsRepository,
 		ChartVersion:     pulumi.String("20.5.3"),
 		Registry:         args.ImagesRepository,
+		StorageClassName: args.StorageClassName,
 	}, opts...)
 	if err != nil {
 		return
@@ -133,26 +136,28 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		ChartsRepository: args.ChartsRepository,
 		ChartVersion:     pulumi.String("20.13.4"),
 		Registry:         args.ImagesRepository,
+		StorageClassName: args.StorageClassName,
 	}, opts...)
 	if err != nil {
 		return
 	}
 
 	ctfdArgs := &components.CTFdArgs{
-		Namespace:       args.Namespace,
-		RedisURL:        ctfer.redis.URL,
-		MariaDBURL:      ctfer.maria.URL,
-		Image:           args.CTFdImage,
-		Registry:        args.ImagesRepository,
-		Hostname:        args.Hostname,
-		CTFdCrt:         args.CTFdCrt,
-		CTFdKey:         args.CTFdKey,
-		CTFdStorageSize: args.CTFdStorageSize,
-		CTFdWorkers:     args.CTFdWorkers,
-		CTFdReplicas:    args.CTFdReplicas,
-		ChallManagerUrl: args.ChallManagerUrl,
-		CTFdRequests:    args.CTFdRequests,
-		CTFdLimits:      args.CTFdLimits,
+		Namespace:        args.Namespace,
+		RedisURL:         ctfer.redis.URL,
+		MariaDBURL:       ctfer.maria.URL,
+		Image:            args.CTFdImage,
+		Registry:         args.ImagesRepository,
+		StorageClassName: args.StorageClassName,
+		Hostname:         args.Hostname,
+		CTFdCrt:          args.CTFdCrt,
+		CTFdKey:          args.CTFdKey,
+		CTFdStorageSize:  args.CTFdStorageSize,
+		CTFdWorkers:      args.CTFdWorkers,
+		CTFdReplicas:     args.CTFdReplicas,
+		ChallManagerUrl:  args.ChallManagerUrl,
+		CTFdRequests:     args.CTFdRequests,
+		CTFdLimits:       args.CTFdLimits,
 	}
 	if args.Otel != nil {
 		ctfdArgs.Otel = &common.OtelArgs{

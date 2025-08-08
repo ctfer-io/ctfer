@@ -34,7 +34,11 @@ type CTFd struct {
 }
 
 type CTFdArgs struct {
-	Namespace       pulumi.StringInput
+	Namespace pulumi.StringInput
+
+	StorageClassName pulumi.StringInput
+	storageClassName pulumi.StringPtrOutput
+
 	RedisURL        pulumi.StringInput
 	MariaDBURL      pulumi.StringInput
 	Image           pulumi.StringInput
@@ -106,6 +110,17 @@ func (ctfd *CTFd) defaults(args *CTFdArgs) *CTFdArgs {
 		args.image = args.Image.ToStringOutput()
 	}
 
+	// Don't default storage class name -> will select the default one
+	// on the K8s cluster.
+	if args.StorageClassName != nil {
+		args.storageClassName = args.StorageClassName.ToStringOutput().ApplyT(func(scm string) *string {
+			if scm == "" {
+				return nil
+			}
+			return &scm
+		}).(pulumi.StringPtrOutput)
+	}
+
 	return args
 }
 
@@ -175,7 +190,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpecArgs{
-			StorageClassName: pulumi.String("longhorn"),
+			StorageClassName: args.StorageClassName,
 			AccessModes: pulumi.ToStringArray([]string{
 				"ReadWriteMany",
 			}),

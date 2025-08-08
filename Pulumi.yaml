@@ -18,6 +18,10 @@ config:
     type: string
     description: Custom registry to use for Helm charts (oci://)
     default: ""
+  storage-class-name:
+    type: string
+    description: 'The StorageClassName for the PersistenVolumeClaim.'
+    default: ''
 
 ## CTFd Configuration
   ctfd-image:
