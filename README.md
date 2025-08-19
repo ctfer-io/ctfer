@@ -55,6 +55,9 @@ If you want to configure several workers on CTFd.
 ```bash
 pulumi config set ctfd-workers 3
 pulumi config set ctfd-replicas 3
+
+# You will ne a ReadWriteMany compatible CSI (e.g longhorn) if the pod is schedule on several nodes
+pulumi config set pvc-access-mode ReadWriteMany
 ```
 
 If you want to configure larger resources than default.

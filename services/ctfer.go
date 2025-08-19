@@ -48,7 +48,9 @@ type CTFerArgs struct {
 	ChartsRepository pulumi.StringInput
 	ImagesRepository pulumi.StringInput
 	StorageClassName pulumi.StringInput
-	AccessMode       pulumi.StringInput
+
+	// PVCAccessModes defines the access modes supported by the PVC.
+	PVCAccessModes pulumi.StringArrayInput
 
 	IngressNamespace pulumi.StringInput
 	IngressLabels    pulumi.StringMapInput

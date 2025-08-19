@@ -37,8 +37,9 @@ type RedisArgs struct {
 	StorageClassName pulumi.StringInput
 	storageClassName pulumi.StringPtrOutput
 
-	AccessMode pulumi.StringInput
-	accessMode pulumi.StringOutput
+	// PVCAccessModes defines the access modes supported by the PVC.
+	PVCAccessModes pulumi.StringArrayInput
+	pvcAccessModes pulumi.StringArrayOutput
 
 	registry pulumi.StringOutput
 	chartUrl pulumi.StringOutput
@@ -111,14 +112,14 @@ func (rd *Redis) defaults(args *RedisArgs) *RedisArgs {
 	}
 
 	// The accessModes cannot be empty on a PVC, use ReadWriteOnce
-	args.accessMode = pulumi.String(defaultAccessMode).ToStringOutput()
-	if args.AccessMode != nil {
-		args.accessMode = args.AccessMode.ToStringOutput().ApplyT(func(am string) string {
-			if am == "" {
-				return defaultAccessMode
+	args.pvcAccessModes = pulumi.ToStringArray(defaultPVCAccessModes).ToStringArrayOutput()
+	if args.PVCAccessModes != nil {
+		args.pvcAccessModes = args.PVCAccessModes.ToStringArrayOutput().ApplyT(func(am []string) []string {
+			if len(am) == 0 {
+				return defaultPVCAccessModes
 			}
 			return am
-		}).(pulumi.StringOutput)
+		}).(pulumi.StringArrayOutput)
 	}
 
 	return args
@@ -202,9 +203,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 			"master": pulumi.Map{
 				"persistence": pulumi.Map{
 					"storageClass": args.storageClassName,
-					"accessModes": pulumi.StringArray{
-						args.accessMode,
-					},
+					"accessModes":  args.pvcAccessModes,
 				},
 				// Taint-Based Eviction
 				"tolerations": pulumi.MapArray{

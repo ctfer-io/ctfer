@@ -1,5 +1,7 @@
 package components
 
-const (
-	defaultAccessMode = "ReadWriteOnce"
+var (
+	defaultPVCAccessModes = []string{
+		"ReadWriteMany",
+	}
 )
