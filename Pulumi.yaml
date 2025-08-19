@@ -22,6 +22,10 @@ config:
     type: string
     description: 'The StorageClassName for the PersistenVolumeClaim.'
     default: ''
+  access-mode:
+    type: string
+    description: 'The AccessMode for the PersistenVolumeClaim.'
+    default: ''
 
 ## CTFd Configuration
   ctfd-image:

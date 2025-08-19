@@ -40,6 +40,9 @@ type MariaDBArgs struct {
 	StorageClassName pulumi.StringInput
 	storageClassName pulumi.StringPtrOutput
 
+	AccessMode pulumi.StringInput
+	accessMode pulumi.StringOutput
+
 	registry pulumi.StringOutput
 	chartUrl pulumi.StringOutput
 }
@@ -109,6 +112,17 @@ func (mdb *MariaDB) defaults(args *MariaDBArgs) *MariaDBArgs {
 			}
 			return &scm
 		}).(pulumi.StringPtrOutput)
+	}
+
+	// The accessModes cannot be empty on a PVC, use ReadWriteOnce
+	args.accessMode = pulumi.String(defaultAccessMode).ToStringOutput()
+	if args.AccessMode != nil {
+		args.accessMode = args.AccessMode.ToStringOutput().ApplyT(func(am string) string {
+			if am == "" {
+				return defaultAccessMode
+			}
+			return am
+		}).(pulumi.StringOutput)
 	}
 
 	return args
@@ -213,9 +227,9 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 			"primary": pulumi.Map{
 				"persistence": pulumi.Map{
 					"storageClass": args.storageClassName,
-					"accessModes": pulumi.ToStringArray([]string{
-						"ReadWriteMany",
-					}),
+					"accessModes": pulumi.StringArray{
+						args.accessMode,
+					},
 				},
 				"extraFlags": pulumi.String("--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci"),
 				// Taint-Based Eviction

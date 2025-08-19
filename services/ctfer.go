@@ -48,6 +48,7 @@ type CTFerArgs struct {
 	ChartsRepository pulumi.StringInput
 	ImagesRepository pulumi.StringInput
 	StorageClassName pulumi.StringInput
+	AccessMode       pulumi.StringInput
 
 	IngressNamespace pulumi.StringInput
 	IngressLabels    pulumi.StringMapInput
@@ -123,6 +124,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		ChartVersion:     pulumi.String("20.5.3"),
 		Registry:         args.ImagesRepository,
 		StorageClassName: args.StorageClassName,
+		AccessMode:       args.AccessMode,
 	}, opts...)
 	if err != nil {
 		return
@@ -137,6 +139,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		ChartVersion:     pulumi.String("20.13.4"),
 		Registry:         args.ImagesRepository,
 		StorageClassName: args.StorageClassName,
+		AccessMode:       args.AccessMode,
 	}, opts...)
 	if err != nil {
 		return
@@ -149,6 +152,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		Image:            args.CTFdImage,
 		Registry:         args.ImagesRepository,
 		StorageClassName: args.StorageClassName,
+		AccessMode:       args.AccessMode,
 		Hostname:         args.Hostname,
 		CTFdCrt:          args.CTFdCrt,
 		CTFdKey:          args.CTFdKey,
