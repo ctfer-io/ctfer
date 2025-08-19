@@ -84,6 +84,9 @@ func main() {
 			CTFdImage:        pulumi.String(cfg.CTFdImage),
 			Hostname:         pulumi.String(cfg.Hostname),
 			StorageClassName: pulumi.String(cfg.StorageClassName),
+			PVCAccessModes: pulumi.ToStringArray([]string{
+				cfg.PVCAccessMode,
+			}),
 			CTFdCrt:          cfg.CTFdCrt,
 			CTFdKey:          cfg.CTFdKey,
 			CTFdStorageSize:  pulumi.String(cfg.CTFdStorageSize),
@@ -123,6 +126,7 @@ type (
 		ImagesRepository string
 		ChartsRepository string
 		StorageClassName string
+		PVCAccessMode    string
 		CTFdImage        string
 		ChallManagerUrl  string
 		CTFdStorageSize  string
@@ -152,6 +156,7 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 		ImagesRepository: cfg.Get("images-repository"),
 		ChartsRepository: cfg.Get("charts-repository"),
 		StorageClassName: cfg.Get("storage-class-name"),
+		PVCAccessMode:    cfg.Get("pvc-access-mode"),
 		CTFdImage:        cfg.Get("ctfd-image"),
 		ChallManagerUrl:  cfg.Get("chall-manager-url"),
 		CTFdCrt:          cfg.GetSecret("ctfd-crt"),

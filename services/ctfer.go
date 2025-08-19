@@ -49,6 +49,9 @@ type CTFerArgs struct {
 	ImagesRepository pulumi.StringInput
 	StorageClassName pulumi.StringInput
 
+	// PVCAccessModes defines the access modes supported by the PVC.
+	PVCAccessModes pulumi.StringArrayInput
+
 	IngressNamespace pulumi.StringInput
 	IngressLabels    pulumi.StringMapInput
 
@@ -123,6 +126,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		ChartVersion:     pulumi.String("20.5.3"),
 		Registry:         args.ImagesRepository,
 		StorageClassName: args.StorageClassName,
+		PVCAccessModes:   args.PVCAccessModes,
 	}, opts...)
 	if err != nil {
 		return
@@ -137,6 +141,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		ChartVersion:     pulumi.String("20.13.4"),
 		Registry:         args.ImagesRepository,
 		StorageClassName: args.StorageClassName,
+		PVCAccessModes:   args.PVCAccessModes,
 	}, opts...)
 	if err != nil {
 		return
@@ -149,6 +154,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		Image:            args.CTFdImage,
 		Registry:         args.ImagesRepository,
 		StorageClassName: args.StorageClassName,
+		PVCAccessModes:   args.PVCAccessModes,
 		Hostname:         args.Hostname,
 		CTFdCrt:          args.CTFdCrt,
 		CTFdKey:          args.CTFdKey,

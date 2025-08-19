@@ -39,6 +39,10 @@ type CTFdArgs struct {
 	StorageClassName pulumi.StringInput
 	storageClassName pulumi.StringPtrOutput
 
+	// PVCAccessModes defines the access modes supported by the PVC.
+	PVCAccessModes pulumi.StringArrayInput
+	pvcAccessModes pulumi.StringArrayOutput
+
 	RedisURL        pulumi.StringInput
 	MariaDBURL      pulumi.StringInput
 	Image           pulumi.StringInput
@@ -121,6 +125,16 @@ func (ctfd *CTFd) defaults(args *CTFdArgs) *CTFdArgs {
 		}).(pulumi.StringPtrOutput)
 	}
 
+	args.pvcAccessModes = pulumi.ToStringArray(defaultPVCAccessModes).ToStringArrayOutput()
+	if args.PVCAccessModes != nil {
+		args.pvcAccessModes = args.PVCAccessModes.ToStringArrayOutput().ApplyT(func(am []string) []string {
+			if len(am) == 0 {
+				return defaultPVCAccessModes
+			}
+			return am
+		}).(pulumi.StringArrayOutput)
+	}
+
 	return args
 }
 
@@ -190,10 +204,8 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpecArgs{
-			StorageClassName: args.StorageClassName,
-			AccessModes: pulumi.ToStringArray([]string{
-				"ReadWriteMany",
-			}),
+			StorageClassName: args.storageClassName,
+			AccessModes: args.pvcAccessModes,
 			Resources: corev1.VolumeResourceRequirementsArgs{
 				Requests: pulumi.StringMap{
 					"storage": args.CTFdStorageSize,
