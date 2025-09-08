@@ -40,21 +40,21 @@ If you want to use a custom certificate.
 ```bash
 # export PULUMI_CONFIG_PASSPHRASE before
 # https://github.com/pulumi/pulumi/issues/6015
-cat /path/to/crt.pem | pulumi config set --secret ctfd-crt
-cat /path/to/key.pem | pulumi config set --secret ctfd-key
+cat /path/to/crt.pem | pulumi config set --secret crt
+cat /path/to/key.pem | pulumi config set --secret key
 ```
 
 If you want to have a larger filesystem for uploads on CTFd.
 
 ```bash
-pulumi config set ctfd-storage-size 10Gi
+pulumi config set storage-size 10Gi
 ```
 
 If you want to configure several workers on CTFd.
 
 ```bash
-pulumi config set ctfd-workers 3
-pulumi config set ctfd-replicas 3
+pulumi config set workers 3
+pulumi config set replicas 3
 
 # You will need a ReadWriteMany compatible CSI (e.g longhorn) if the Pods is schedule on several nodes
 pulumi config set pvc-access-mode ReadWriteMany
@@ -63,11 +63,11 @@ pulumi config set pvc-access-mode ReadWriteMany
 If you want to configure larger resources than default.
 
 ```bash
-pulumi config set --path ctfd-requests.cpu 1
-pulumi config set --path ctfd-requests.memory 2Gi
+pulumi config set --path requests.cpu 1
+pulumi config set --path requests.memory 2Gi
 
-pulumi config set --path ctfd-limits.cpu 1
-pulumi config set --path ctfd-limits.memory 1Gi
+pulumi config set --path limits.cpu 1
+pulumi config set --path limits.memory 1Gi
 ```
 
 Deploy CTFer.

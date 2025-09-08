@@ -32,17 +32,18 @@ type CTFer struct {
 }
 
 type CTFerArgs struct {
-	Namespace       pulumi.StringInput
-	CTFdImage       pulumi.StringInput
-	ChallManagerUrl pulumi.StringInput
+	Namespace pulumi.StringInput
 
-	CTFdCrt         pulumi.StringInput
-	CTFdKey         pulumi.StringInput
-	CTFdStorageSize pulumi.StringInput
-	CTFdWorkers     pulumi.IntInput
-	CTFdReplicas    pulumi.IntInput
-	CTFdRequests    pulumi.StringMapInput
-	CTFdLimits      pulumi.StringMapInput
+	CTFdImage       pulumi.StringInput
+	ChallManagerURL pulumi.StringInput
+
+	Crt         pulumi.StringInput
+	Key         pulumi.StringInput
+	StorageSize pulumi.StringInput
+	Workers     pulumi.IntInput
+	Replicas    pulumi.IntInput
+	Requests    pulumi.StringMapInput
+	Limits      pulumi.StringMapInput
 
 	Hostname         pulumi.StringInput
 	ChartsRepository pulumi.StringInput
@@ -54,8 +55,9 @@ type CTFerArgs struct {
 
 	IngressNamespace pulumi.StringInput
 	IngressLabels    pulumi.StringMapInput
+	Annotations      pulumi.StringMapInput
 
-	Otel *common.OtelArgs
+	OTel *common.OTelArgs
 }
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
@@ -148,28 +150,33 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 	}
 
 	ctfdArgs := &components.CTFdArgs{
-		Namespace:        args.Namespace,
-		RedisURL:         ctfer.redis.URL,
-		MariaDBURL:       ctfer.maria.URL,
-		Image:            args.CTFdImage,
-		Registry:         args.ImagesRepository,
+		Namespace: args.Namespace,
+
+		RedisURL:        ctfer.redis.URL,
+		MariaDBURL:      ctfer.maria.URL,
+		ChallManagerURL: args.ChallManagerURL,
+
+		Image:    args.CTFdImage,
+		Registry: args.ImagesRepository,
+		Workers:  args.Workers,
+		Replicas: args.Replicas,
+		Limits:   args.Limits,
+		Requests: args.Requests,
+
+		StorageSize:      args.StorageSize,
 		StorageClassName: args.StorageClassName,
 		PVCAccessModes:   args.PVCAccessModes,
-		Hostname:         args.Hostname,
-		CTFdCrt:          args.CTFdCrt,
-		CTFdKey:          args.CTFdKey,
-		CTFdStorageSize:  args.CTFdStorageSize,
-		CTFdWorkers:      args.CTFdWorkers,
-		CTFdReplicas:     args.CTFdReplicas,
-		ChallManagerUrl:  args.ChallManagerUrl,
-		CTFdRequests:     args.CTFdRequests,
-		CTFdLimits:       args.CTFdLimits,
+
+		Crt:         args.Crt,
+		Key:         args.Key,
+		Hostname:    args.Hostname,
+		Annotations: args.Annotations,
 	}
-	if args.Otel != nil {
-		ctfdArgs.Otel = &common.OtelArgs{
-			ServiceName: pulumi.Sprintf("%s-ctfd", args.Otel.ServiceName),
-			Endpoint:    args.Otel.Endpoint,
-			Insecure:    args.Otel.Insecure,
+	if args.OTel != nil {
+		ctfdArgs.OTel = &common.OTelArgs{
+			ServiceName: pulumi.Sprintf("%s-ctfd", args.OTel.ServiceName),
+			Endpoint:    args.OTel.Endpoint,
+			Insecure:    args.OTel.Insecure,
 		}
 	}
 	ctfer.ctfd, err = components.NewCTFd(ctx, "platform", ctfdArgs, append(opts, pulumi.DependsOn([]pulumi.Resource{

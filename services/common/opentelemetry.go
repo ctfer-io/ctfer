@@ -3,7 +3,7 @@ package common
 import "github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 type (
-	OtelArgs struct {
+	OTelArgs struct {
 		// The OpenTelemetry service name to export signals with.
 		ServiceName pulumi.StringPtrInput
 

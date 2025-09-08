@@ -87,21 +87,21 @@ func main() {
 			PVCAccessModes: pulumi.ToStringArray([]string{
 				cfg.PVCAccessMode,
 			}),
-			CTFdCrt:          cfg.CTFdCrt,
-			CTFdKey:          cfg.CTFdKey,
-			CTFdStorageSize:  pulumi.String(cfg.CTFdStorageSize),
-			CTFdWorkers:      pulumi.Int(cfg.CTFdWorkers),
-			CTFdReplicas:     pulumi.Int(cfg.CTFdReplicas),
+			Crt:              cfg.Crt,
+			Key:              cfg.Key,
+			StorageSize:      pulumi.String(cfg.StorageSize),
+			Workers:          pulumi.Int(cfg.Workers),
+			Replicas:         pulumi.Int(cfg.Replicas),
 			ChartsRepository: pulumi.String(cfg.ChartsRepository),
 			ImagesRepository: pulumi.String(cfg.ImagesRepository),
-			ChallManagerUrl:  pulumi.String(cfg.ChallManagerUrl),
-			CTFdRequests:     pulumi.ToStringMap(cfg.CTFdRequests),
-			CTFdLimits:       pulumi.ToStringMap(cfg.CTFdLimits),
+			ChallManagerURL:  pulumi.String(cfg.ChallManagerUrl),
+			Requests:         pulumi.ToStringMap(cfg.Requests),
+			Limits:           pulumi.ToStringMap(cfg.Limits),
 			IngressNamespace: pulumi.String(cfg.IngressNamespace),
 			IngressLabels:    pulumi.ToStringMap(cfg.IngressLabels),
 		}
 		if cfg.Otel != nil {
-			ctferArgs.Otel = &common.OtelArgs{
+			ctferArgs.OTel = &common.OTelArgs{
 				ServiceName: pulumi.String(ctx.Stack()),
 				Endpoint:    pulumi.String(cfg.Otel.Endpoint),
 				Insecure:    cfg.Otel.Insecure,
@@ -129,13 +129,13 @@ type (
 		PVCAccessMode    string
 		CTFdImage        string
 		ChallManagerUrl  string
-		CTFdStorageSize  string
-		CTFdCrt          pulumi.StringInput
-		CTFdKey          pulumi.StringInput
-		CTFdReplicas     int
-		CTFdWorkers      int
-		CTFdRequests     map[string]string
-		CTFdLimits       map[string]string
+		StorageSize      string
+		Crt              pulumi.StringInput
+		Key              pulumi.StringInput
+		Replicas         int
+		Workers          int
+		Requests         map[string]string
+		Limits           map[string]string
 		IngressNamespace string
 		IngressLabels    map[string]string
 
@@ -159,18 +159,18 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 		PVCAccessMode:    cfg.Get("pvc-access-mode"),
 		CTFdImage:        cfg.Get("ctfd-image"),
 		ChallManagerUrl:  cfg.Get("chall-manager-url"),
-		CTFdCrt:          cfg.GetSecret("ctfd-crt"),
-		CTFdKey:          cfg.GetSecret("ctfd-key"),
-		CTFdStorageSize:  cfg.Get("ctfd-storage-size"),
-		CTFdReplicas:     cfg.GetInt("ctfd-replicas"),
-		CTFdWorkers:      cfg.GetInt("ctfd-workers"),
+		Crt:              cfg.GetSecret("crt"),
+		Key:              cfg.GetSecret("key"),
+		StorageSize:      cfg.Get("storage-size"),
+		Replicas:         cfg.GetInt("replicas"),
+		Workers:          cfg.GetInt("workers"),
 		IngressNamespace: cfg.Get("ingress-namespace"),
 	}
-	if err := cfg.TryObject("ctfd-requests", &c.CTFdRequests); err != nil {
+	if err := cfg.TryObject("requests", &c.Requests); err != nil {
 		return nil, err
 	}
 
-	if err := cfg.TryObject("ctfd-limits", &c.CTFdLimits); err != nil {
+	if err := cfg.TryObject("limits", &c.Limits); err != nil {
 		return nil, err
 	}
 

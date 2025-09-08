@@ -36,8 +36,7 @@ type CTFd struct {
 type CTFdArgs struct {
 	Namespace pulumi.StringInput
 
-	StorageClassName pulumi.StringInput
-	storageClassName pulumi.StringPtrOutput
+	// Functional dependencies
 
 	// PVCAccessModes defines the access modes supported by the PVC.
 	PVCAccessModes pulumi.StringArrayInput
@@ -45,22 +44,37 @@ type CTFdArgs struct {
 
 	RedisURL        pulumi.StringInput
 	MariaDBURL      pulumi.StringInput
-	Image           pulumi.StringInput
-	Registry        pulumi.StringInput
-	CTFdCrt         pulumi.StringInput
-	CTFdKey         pulumi.StringInput
-	Hostname        pulumi.StringInput
-	CTFdStorageSize pulumi.StringInput
-	CTFdWorkers     pulumi.IntInput
-	CTFdReplicas    pulumi.IntInput
-	ChallManagerUrl pulumi.StringInput
-	CTFdLimits      pulumi.StringMapInput
-	CTFdRequests    pulumi.StringMapInput
+	ChallManagerURL pulumi.StringInput
+	OTel            *common.OTelArgs
 
-	Otel *common.OtelArgs
+	// CTFd settings
 
+	Image pulumi.StringInput
+	image pulumi.StringOutput
+
+	Registry pulumi.StringInput
 	registry pulumi.StringOutput
-	image    pulumi.StringOutput
+
+	Workers  pulumi.IntInput
+	Replicas pulumi.IntInput
+	Limits   pulumi.StringMapInput
+	Requests pulumi.StringMapInput
+
+	// Storage settings
+
+	StorageSize pulumi.StringInput
+
+	StorageClassName pulumi.StringInput
+	storageClassName pulumi.StringPtrOutput
+
+	// Exposure settings
+
+	Crt      pulumi.StringInput
+	Key      pulumi.StringInput
+	Hostname pulumi.StringInput
+
+	Annotations pulumi.StringMapInput
+	annotations pulumi.StringMapOutput
 }
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
@@ -135,6 +149,12 @@ func (ctfd *CTFd) defaults(args *CTFdArgs) *CTFdArgs {
 		}).(pulumi.StringArrayOutput)
 	}
 
+	// Make sure the annotations are non-nil
+	args.annotations = pulumi.StringMap{}.ToStringMapOutput()
+	if args.Annotations != nil {
+		args.annotations = args.Annotations.ToStringMapOutput()
+	}
+
 	return args
 }
 
@@ -205,10 +225,10 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		},
 		Spec: corev1.PersistentVolumeClaimSpecArgs{
 			StorageClassName: args.storageClassName,
-			AccessModes: args.pvcAccessModes,
+			AccessModes:      args.pvcAccessModes,
 			Resources: corev1.VolumeResourceRequirementsArgs{
 				Requests: pulumi.StringMap{
-					"storage": args.CTFdStorageSize,
+					"storage": args.StorageSize,
 				},
 			},
 		},
@@ -246,32 +266,32 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		},
 	}
 
-	if args.CTFdWorkers != nil {
+	if args.Workers != nil {
 		envs = append(envs, corev1.EnvVarArgs{
 			Name:  pulumi.String("WORKERS"),
-			Value: pulumi.Sprintf("%d", args.CTFdWorkers),
+			Value: pulumi.Sprintf("%d", args.Workers),
 		})
 	}
 
-	if args.ChallManagerUrl != nil {
+	if args.ChallManagerURL != nil {
 		envs = append(envs, corev1.EnvVarArgs{
 			Name:  pulumi.String("PLUGIN_SETTINGS_CM_API_URL"),
-			Value: args.ChallManagerUrl,
+			Value: args.ChallManagerURL,
 		})
 	}
 
-	if args.Otel != nil {
+	if args.OTel != nil {
 		envs = append(envs,
 			corev1.EnvVarArgs{
 				Name:  pulumi.String("OTEL_SERVICE_NAME"),
-				Value: args.Otel.ServiceName,
+				Value: args.OTel.ServiceName,
 			},
 			corev1.EnvVarArgs{
 				Name:  pulumi.String("OTEL_EXPORTER_OTLP_ENDPOINT"),
-				Value: args.Otel.Endpoint,
+				Value: args.OTel.Endpoint,
 			},
 		)
-		if args.Otel.Insecure {
+		if args.OTel.Insecure {
 			envs = append(envs,
 				corev1.EnvVarArgs{
 					Name:  pulumi.String("OTEL_EXPORTER_OTLP_INSECURE"),
@@ -303,7 +323,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			Selector: metav1.LabelSelectorArgs{
 				MatchLabels: ctfd.PodLabels,
 			},
-			Replicas: args.CTFdReplicas,
+			Replicas: args.Replicas,
 			Template: &corev1.PodTemplateSpecArgs{
 				Metadata: &metav1.ObjectMetaArgs{
 					Namespace: args.Namespace,
@@ -332,8 +352,8 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 								},
 							},
 							Resources: corev1.ResourceRequirementsArgs{
-								Requests: args.CTFdRequests,
-								Limits:   args.CTFdLimits,
+								Requests: args.Requests,
+								Limits:   args.Limits,
 							},
 							ReadinessProbe: corev1.ProbeArgs{
 								HttpGet: corev1.HTTPGetActionArgs{
@@ -412,7 +432,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 	// FIXME the secret still be created even if the pulumi config does not exists
 	// The secret is not valid so the default traefik cert will be used
 	tlsOps := netwv1.IngressTLSArray{}
-	if args.CTFdCrt != nil && args.CTFdKey != nil {
+	if args.Crt != nil && args.Key != nil {
 		ctfd.tlssec, err = corev1.NewSecret(ctx, "ctfd-secret-tls", &corev1.SecretArgs{
 			Metadata: metav1.ObjectMetaArgs{
 				Namespace: args.Namespace,
@@ -424,8 +444,8 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			},
 			Type: pulumi.String("kubernetes.io/tls"),
 			StringData: pulumi.StringMap{
-				"tls.crt": args.CTFdCrt.ToStringOutput(),
-				"tls.key": args.CTFdKey.ToStringOutput(),
+				"tls.crt": args.Crt.ToStringOutput(),
+				"tls.key": args.Key.ToStringOutput(),
 			},
 		}, opts...)
 		if err != nil {
@@ -445,10 +465,8 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
 				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
-			Namespace: args.Namespace,
-			Annotations: pulumi.ToStringMap(map[string]string{
-				"pulumi.com/skipAwait": "true",
-			}),
+			Namespace:   args.Namespace,
+			Annotations: args.annotations,
 		},
 		Spec: netwv1.IngressSpecArgs{
 			Rules: netwv1.IngressRuleArray{
