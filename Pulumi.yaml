@@ -35,37 +35,37 @@ config:
   chall-manager-url:
     type: string
     description: Chall-Manager API URL to use
-  ctfd-crt:
+  crt:
     type: string
     description: X509 .crt
-  ctfd-key:
+  key:
     type: string
     description: x509 .key content for https
-  ctfd-storage-size:
+  storage-size:
     type: string
     description: Size of the PVC
     default: "2Gi"
-  ctfd-replicas:
+  replicas:
     type: integer
     description: Number of replicas of the StatefulSet
     default: 1
-  ctfd-workers:
+  workers:
     type: integer
     description: Number of worker inside container
     default: 1
-  ctfd-requests.cpu:
+  requests.cpu:
     type: string
     description: The number of CPUs to use.
     default: "2.0"
-  ctfd-requests.memory:
+  requests.memory:
     type: string
     description : The memory size to use.
     default: "1Gi"
-  ctfd-limits.cpu:
+  limits.cpu:
     type: string
     description: The maximum number of CPUs to use.
     default: "4.0"
-  ctfd-limits.memory:
+  limits.memory:
     type: string
     description: The maximum memory size to use.
     default: "2Gi"
