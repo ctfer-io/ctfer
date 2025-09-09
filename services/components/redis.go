@@ -229,6 +229,11 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 			"commonLabels": pulumi.StringMap{
 				"ctfer.io/stack-name": pulumi.String(ctx.Stack()),
 			},
+			// XXX the following is required per deprecation notice of bitnami free images.
+			// See https://github.com/bitnami/containers/issues/83267 for more info...
+			"image": pulumi.StringMap{
+				"repository": pulumi.String("bitnamilegacy/redis"),
+			},
 		},
 	}, opts...)
 	if err != nil {
