@@ -214,9 +214,11 @@ func (mdb *MariaDB) provision(ctx *pulumi.Context, args *MariaDBArgs, opts ...pu
 				// Enable pulling images from private registry
 				if repo != "" {
 					mp["imageRegistry"] = repo[:len(repo)-1]
-					mp["security"] = map[string]any{
-						"allowInsecureImages": true,
-					}
+				}
+				// XXX the following is required per deprecation notice of bitnami free images.
+				// See https://github.com/bitnami/containers/issues/83267 for more info...
+				mp["security"] = map[string]any{
+					"allowInsecureImages": true,
 				}
 				return mp
 			}).(pulumi.MapOutput),
