@@ -142,3 +142,26 @@ Activer la feature dans le helm.
 ```
 
 Enfin, appliquer le manifest `hack/httpscaleobject.yaml`.
+
+# PostgreSQL
+
+```bash
+
+# create kind cluster without CNI
+kind create cluster --config hack/kind-config.yaml
+
+# install cilium 
+helm install cilium cilium/cilium --version 1.18.2 \
+	--namespace kube-system   \
+	--set ipam.mode=kubernetes \
+	--set hubble.relay.enabled=true \
+    --set hubble.ui.enabled=true
+
+# install postgresql operator
+helm install postgres-operator postgres-operator-charts/postgres-operator --set "configKubernetes.inherited_labels={app.kubernetes.io/component,app.kubernetes.io/part-of,ctfer.io/stack-name}"
+
+# mimic node failure
+kubectl cordon kind-worker
+# then delete the master node
+
+```
