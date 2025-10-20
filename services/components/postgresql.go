@@ -19,9 +19,10 @@ import (
 type PostgreSQL struct {
 	pulumi.ResourceState
 
-	// Secret
-	sec      *corev1.Secret
+	// owner access
+	userName pulumi.String
 	userPass *random.RandomPassword
+	userSec  *corev1.Secret
 
 	cluster     *yamlv2.ConfigGroup
 	clusterName pulumi.StringInput
@@ -58,7 +59,7 @@ const (
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: cilium-seed-apiserver-allow-{{ .Stack }}
+  name: cilium-pg-to-apiserver-allow-{{ .Stack }}
   namespace: {{ .Namespace }}
 spec:
   endpointSelector:
@@ -208,8 +209,13 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 		return err
 	}
 
-	// password for postgres user
-	psql.userPass, err = random.NewRandomPassword(ctx, "userPass-secret", &random.RandomPasswordArgs{
+	psql.clusterName = pulumi.Sprintf("%s-%s", args.clusterNamePrefix, ctx.Stack())
+
+	// see https://github.com/zalando/postgres-operator/issues/553
+	// password for owner user (ctfd)
+	username := "ctfd"
+	psql.userName = pulumi.String(username)
+	psql.userPass, err = random.NewRandomPassword(ctx, "owner-secret", &random.RandomPasswordArgs{
 		Length:  pulumi.Int(32),
 		Special: pulumi.BoolPtr(false),
 	}, opts...)
@@ -217,16 +223,15 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 		return err
 	}
 
-	psql.clusterName = pulumi.Sprintf("%s-%s", args.clusterNamePrefix, ctx.Stack())
-	psql.sec, err = corev1.NewSecret(ctx, "database-access-secret", &corev1.SecretArgs{
+	psql.userSec, err = corev1.NewSecret(ctx, "owner-access-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.Sprintf("postgres.%s.credentials.postgresql.acid.zalan.do", psql.clusterName), //need to hardcode the name to override the generated secret from operator
+			Name:      pulumi.Sprintf("%s.%s.credentials.postgresql.acid.zalan.do", psql.userName, psql.clusterName), //need to hardcode the name to override the generated secret from operator
 			Namespace: args.Namespace,
 			Labels:    psql.podLabels,
 		},
 		Type: pulumi.String("Opaque"),
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
-			"username": pulumi.String("postgres").ToStringOutput(),
+			"username": psql.userName.ToStringOutput(),
 			"password": psql.userPass.Result,
 		}),
 	}, opts...)
@@ -278,11 +283,18 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 				netwv1.NetworkPolicyIngressRuleArgs{
 					From: netwv1.NetworkPolicyPeerArray{
 						netwv1.NetworkPolicyPeerArgs{
-							PodSelector: metav1.LabelSelectorArgs{
+							NamespaceSelector: metav1.LabelSelectorArgs{
 								MatchLabels: pulumi.StringMap{
-									"app.kubernetes.io/name": pulumi.String("postgres-operator"),
+									"kubernetes.io/metadata.name": pulumi.String("default"), // XXX
 								},
 							},
+							// Do not use the PodSelector for the operator
+							// PodSelector: metav1.LabelSelectorArgs{
+							// 	MatchLabels: pulumi.StringMap{
+							// 		"app.kubernetes.io/name":     pulumi.String("postgres-operator"),
+							// 		"app.kubernetes.io/instance": pulumi.String("postgres-operator"),
+							// 	},
+							// },
 						},
 					},
 					Ports: netwv1.NetworkPolicyPortArray{
@@ -345,7 +357,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 		return err
 	}
 
-	opts = append(opts, pulumi.DependsOn([]pulumi.Resource{psql.pgToApi, psql.sec, psql.pgFromClient}))
+	opts = append(opts, pulumi.DependsOn([]pulumi.Resource{psql.pgToApi, psql.userSec, psql.pgFromClient}))
 
 	// Create cluster with postgres-operator
 	psql.cluster, err = yamlv2.NewConfigGroup(ctx, "database-cluster", &yamlv2.ConfigGroupArgs{
@@ -360,16 +372,19 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 				},
 				"spec": pulumi.Map{
 					"dockerImage":       pulumi.Sprintf("%szalando/spilo-17:4.0-p3", args.registry),
-					"teamId":            pulumi.String("ctfd"),
+					"teamId":            psql.userName,
 					"numberOfInstances": pulumi.Int(3), // TODO make it configurable
 					"users": pulumi.Map{
-						"ctfd": pulumi.StringArray{}, // XXX quid
+						username: pulumi.StringArray{},
 					},
 					"databases": pulumi.Map{
-						"ctfd": pulumi.String("ctfd"),
+						username: psql.userName,
 					},
 					"postgresql": pulumi.Map{
-						"version": pulumi.String("17"), // XXX quid
+						"version": pulumi.String("17"),
+						"parameters": pulumi.Map{
+							"password_encryption": pulumi.String("scram-sha-256"),
+						},
 					},
 					"volume": pulumi.Map{
 						"size": pulumi.String("10Gi"),
@@ -411,8 +426,8 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 }
 
 func (psql *PostgreSQL) outputs(ctx *pulumi.Context) error {
-
-	psql.URL = pulumi.Sprintf("postgresql+psycopg2://postgres:%s@%s:5432/ctfd", psql.userPass.Result, psql.clusterName)
+	//psql.URL = pulumi.Sprintf("postgresql+psycopg2://%s:%s@%s:5432/ctfd", pulumi.String("postgres"), psql.postgresPass.Result, psql.clusterName)
+	psql.URL = pulumi.Sprintf("postgresql+psycopg2://%s:%s@%s:5432/%s", psql.userName, psql.userPass.Result, psql.clusterName, psql.userName)
 	psql.PodLabels = psql.podLabels.ToStringMapOutput()
 
 	return ctx.RegisterResourceOutputs(psql, pulumi.Map{
