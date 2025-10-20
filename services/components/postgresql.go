@@ -1,16 +1,19 @@
 package components
 
 import (
+	"bytes"
 	"strings"
 	"sync"
+	"text/template"
 
-	"github.com/hashicorp/go-multierror"
+	"github.com/Masterminds/sprig/v3"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	netwv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	yamlv2 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/yaml/v2"
 	"github.com/pulumi/pulumi-random/sdk/v4/go/random"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"go.uber.org/multierr"
 )
 
 type PostgreSQL struct {
@@ -20,23 +23,58 @@ type PostgreSQL struct {
 	sec      *corev1.Secret
 	userPass *random.RandomPassword
 
-	cluster *yamlv2.ConfigGroup
+	cluster     *yamlv2.ConfigGroup
+	clusterName pulumi.StringInput
 
 	// Netpols
 	pgToApi      *yamlv2.ConfigGroup
 	pgFromClient *netwv1.NetworkPolicy
 
-	URL          pulumi.StringOutput
-	AccessSecret pulumi.StringOutput
-	PodLabels    pulumi.StringMapOutput
+	URL       pulumi.StringOutput
+	PodLabels pulumi.StringMapOutput
+	podLabels pulumi.StringMapInput
 }
 
 type PostgreSQLArgs struct {
 	Namespace pulumi.StringInput
 
-	Registry pulumi.StringInput
+	Registry pulumi.StringPtrInput
 	registry pulumi.StringOutput
+
+	// PgToApiServerTemplate is a Go text/template that defines the NetworkPolicy
+	// YAML schema to use.
+	// If none set, it is defaulted to a cilium.io/v2 CiliumNetworkPolicy.
+	PgToApiServerTemplate pulumi.StringPtrInput
+	pgToApiServerTemplate pulumi.StringOutput
+
+	ClusterNamePrefix pulumi.StringPtrInput
+	clusterNamePrefix pulumi.StringOutput
 }
+
+const (
+	defaultRegistry              = "ghcr.io/" // spilo is not pushed in docker.io
+	defaultClusterNamePrefix     = "ctfer-database"
+	defaultPgToApiServerTemplate = `
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: cilium-seed-apiserver-allow-{{ .Stack }}
+  namespace: {{ .Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+    {{- range $k, $v := .PodLabels }}
+      {{ $k }}: {{ $v }}
+    {{- end }}
+  egress:
+  - toEntities:
+    - kube-apiserver
+  - toPorts:
+    - ports:
+      - port: "6443"
+        protocol: TCP
+`
+)
 
 // NewPostgreSQL creates a HA PostgreSQL cluster.
 func NewPostgreSQL(ctx *pulumi.Context, name string, args *PostgreSQLArgs, opts ...pulumi.ResourceOption) (*PostgreSQL, error) {
@@ -67,12 +105,12 @@ func (psql *PostgreSQL) defaults(args *PostgreSQLArgs) *PostgreSQLArgs {
 	}
 
 	// Define private registry if any
-	args.registry = pulumi.String("ghcr.io/").ToStringOutput()
+	args.registry = pulumi.String(defaultRegistry).ToStringOutput()
 	if args.Registry != nil {
 		args.registry = args.Registry.ToStringPtrOutput().ApplyT(func(in *string) string {
 			// No private registry -> defaults to GitHub Container Registry
 			if in == nil || *in == "" {
-				return "ghcr.io/"
+				return defaultRegistry
 			}
 
 			str := *in
@@ -84,81 +122,87 @@ func (psql *PostgreSQL) defaults(args *PostgreSQLArgs) *PostgreSQLArgs {
 		}).(pulumi.StringOutput)
 	}
 
+	// Define custom clusterName prefix if any
+	args.clusterNamePrefix = pulumi.String(defaultClusterNamePrefix).ToStringOutput()
+	if args.ClusterNamePrefix != nil {
+		args.clusterNamePrefix = args.ClusterNamePrefix.ToStringPtrOutput().ApplyT(func(in *string) string {
+			// No custom ClusterName
+			if in == nil || *in == "" {
+				return defaultClusterNamePrefix
+			}
+			return *in
+		}).(pulumi.StringOutput)
+	}
+
+	args.pgToApiServerTemplate = pulumi.String(defaultPgToApiServerTemplate).ToStringOutput()
+	if args.PgToApiServerTemplate != nil {
+		args.pgToApiServerTemplate = args.PgToApiServerTemplate.ToStringPtrOutput().ApplyT(func(pgToApiServerTemplate *string) string {
+			if pgToApiServerTemplate == nil || *pgToApiServerTemplate == "" {
+				return defaultPgToApiServerTemplate
+			}
+			return *pgToApiServerTemplate
+		}).(pulumi.StringOutput)
+	}
+
 	return args
 }
 
-func (psql *PostgreSQL) check(_ *PostgreSQLArgs) error {
-	checks := 0
+func (psql *PostgreSQL) check(args *PostgreSQLArgs) error {
+	checks := 1
 	wg := &sync.WaitGroup{}
 	wg.Add(checks)
 	cerr := make(chan error, checks)
 
-	// TODO perform validation checks
-	// smth.ApplyT(func(abc def) ghi {
-	//     defer wg.Done()
-	//
-	//     ... the actual test
-	//     if err != nil {
-	//         cerr <- err
-	//         return
-	//     }
-	// })
+	// Verify the template is syntactically valid.
+	args.pgToApiServerTemplate.ApplyT(func(pgToApiServerTemplate string) error {
+		defer wg.Done()
+
+		_, err := template.New("pg-to-apiserver").
+			Funcs(sprig.FuncMap()).
+			Parse(pgToApiServerTemplate)
+		cerr <- err
+		return nil
+	})
 
 	wg.Wait()
 	close(cerr)
 
 	var merr error
 	for err := range cerr {
-		merr = multierror.Append(merr, err)
+		merr = multierr.Append(merr, err)
 	}
 	return merr
 }
 
 func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opts ...pulumi.ResourceOption) (err error) {
 
+	psql.podLabels = pulumi.StringMap{
+		"app.kubernetes.io/component": pulumi.String("postgresql"),
+		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
+	}
+
 	// postgreSQL to kube-apiserver
-	psql.pgToApi, err = yamlv2.NewConfigGroup(ctx, "postgres-to-apiserver-cnp", &yamlv2.ConfigGroupArgs{
-		Objs: pulumi.Array{
-			pulumi.Map{
-				"apiVersion": pulumi.String("cilium.io/v2"),
-				"kind":       pulumi.String("CiliumNetworkPolicy"),
-				"metadata": pulumi.Map{
-					"name":      pulumi.Sprintf("cilium-pg-to-apiserver-netpol-%s", ctx.Stack()),
-					"namespace": args.Namespace,
-					"labels": pulumi.StringMap{
-						"app.kubernetes.io/component": pulumi.String("postgresql"),
-						"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-						"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-					},
-				},
-				"spec": pulumi.Map{
-					"endpointSelector": pulumi.Map{
-						"matchLabels": pulumi.StringMap{
-							"app.kubernetes.io/component": pulumi.String("postgresql"),
-							"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-							"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-						},
-					},
-					"egress": pulumi.Array{
-						pulumi.Map{
-							"toEntities": pulumi.Array{
-								pulumi.String("kube-apiserver"),
-							},
-							"toPorts": pulumi.Array{
-								pulumi.Map{
-									"ports": pulumi.Array{
-										pulumi.Map{
-											"port":     pulumi.String("6443"),
-											"protocol": pulumi.String("TCP"),
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
+	psql.pgToApi, err = yamlv2.NewConfigGroup(ctx, "kube-apiserver-netpol", &yamlv2.ConfigGroupArgs{
+		Yaml: pulumi.All(args.pgToApiServerTemplate, args.Namespace, psql.podLabels).ApplyT(func(all []any) (string, error) {
+			cmToApiServerTemplate := all[0].(string)
+			namespace := all[1].(string)
+			podLabels := all[2].(map[string]string)
+
+			tmpl, _ := template.New("cm-to-apiserver").
+				Funcs(sprig.FuncMap()).
+				Parse(cmToApiServerTemplate)
+
+			buf := &bytes.Buffer{}
+			if err := tmpl.Execute(buf, map[string]any{
+				"Stack":     ctx.Stack(),
+				"Namespace": namespace,
+				"PodLabels": podLabels,
+			}); err != nil {
+				return "", err
+			}
+			return buf.String(), nil
+		}).(pulumi.StringOutput),
 	}, opts...)
 	if err != nil {
 		return err
@@ -173,15 +217,12 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 		return err
 	}
 
+	psql.clusterName = pulumi.Sprintf("%s-%s", args.clusterNamePrefix, ctx.Stack())
 	psql.sec, err = corev1.NewSecret(ctx, "database-access-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.Sprintf("postgres.ctfd-database-%s.credentials.postgresql.acid.zalan.do", ctx.Stack()), //need to hardcode the name to override the generated secret from operator
+			Name:      pulumi.Sprintf("postgres.%s.credentials.postgresql.acid.zalan.do", psql.clusterName), //need to hardcode the name to override the generated secret from operator
 			Namespace: args.Namespace,
-			Labels: pulumi.StringMap{
-				"app.kubernetes.io/component": pulumi.String("postgresql"),
-				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-			},
+			Labels:    psql.podLabels,
 		},
 		Type: pulumi.String("Opaque"),
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
@@ -197,11 +238,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 	psql.pgFromClient, err = netwv1.NewNetworkPolicy(ctx, "pg-from-client-netpol", &netwv1.NetworkPolicyArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Namespace: args.Namespace,
-			Labels: pulumi.StringMap{
-				"app.kubernetes.io/component": pulumi.String("postgresql"),
-				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-			},
+			Labels:    psql.podLabels,
 		},
 		Spec: netwv1.NetworkPolicySpecArgs{
 			PolicyTypes: pulumi.ToStringArray([]string{
@@ -209,11 +246,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 				"Egress",
 			}),
 			PodSelector: metav1.LabelSelectorArgs{
-				MatchLabels: pulumi.StringMap{
-					"app.kubernetes.io/component": pulumi.String("postgresql"),
-					"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-					"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-				},
+				MatchLabels: psql.podLabels,
 			},
 			Ingress: netwv1.NetworkPolicyIngressRuleArray{
 				// Allows from explicit clients (e.g CTFd)
@@ -268,11 +301,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 					From: netwv1.NetworkPolicyPeerArray{
 						netwv1.NetworkPolicyPeerArgs{
 							PodSelector: metav1.LabelSelectorArgs{
-								MatchLabels: pulumi.StringMap{
-									"app.kubernetes.io/component": pulumi.String("postgresql"),
-									"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-									"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-								},
+								MatchLabels: psql.podLabels,
 							},
 						},
 					},
@@ -294,11 +323,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 					To: netwv1.NetworkPolicyPeerArray{
 						netwv1.NetworkPolicyPeerArgs{
 							PodSelector: metav1.LabelSelectorArgs{
-								MatchLabels: pulumi.StringMap{
-									"app.kubernetes.io/component": pulumi.String("postgresql"),
-									"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-									"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-								},
+								MatchLabels: psql.podLabels,
 							},
 						},
 					},
@@ -329,13 +354,9 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 				"apiVersion": pulumi.String("acid.zalan.do/v1"),
 				"kind":       pulumi.String("postgresql"),
 				"metadata": pulumi.Map{
-					"name":      pulumi.Sprintf("ctfd-database-%s", ctx.Stack()),
+					"name":      psql.clusterName,
 					"namespace": args.Namespace,
-					"labels": pulumi.StringMap{
-						"app.kubernetes.io/component": pulumi.String("postgresql"),
-						"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-						"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-					},
+					"labels":    psql.podLabels,
 				},
 				"spec": pulumi.Map{
 					"dockerImage":       pulumi.Sprintf("%szalando/spilo-17:4.0-p3", args.registry),
@@ -348,7 +369,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 						"ctfd": pulumi.String("ctfd"),
 					},
 					"postgresql": pulumi.Map{
-						"version": pulumi.String("17"),
+						"version": pulumi.String("17"), // XXX quid
 					},
 					"volume": pulumi.Map{
 						"size": pulumi.String("10Gi"),
@@ -386,24 +407,16 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 		return err
 	}
 
-	// check that the cluster is read, how ?
-
 	return nil
 }
 
 func (psql *PostgreSQL) outputs(ctx *pulumi.Context) error {
 
-	psql.URL = pulumi.Sprintf("postgresql+psycopg2://postgres:%s@ctfd-database-dev1:5432/ctfd", psql.userPass.Result)
-	psql.AccessSecret = pulumi.Sprintf("ctfd.ctfd-database-%s.credentials.postgresql.acid.zalan.do", ctx.Stack())
-	psql.PodLabels = pulumi.StringMap{
-		"app.kubernetes.io/component": pulumi.String("postgresql"),
-		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-	}.ToStringMapOutput()
+	psql.URL = pulumi.Sprintf("postgresql+psycopg2://postgres:%s@%s:5432/ctfd", psql.userPass.Result, psql.clusterName)
+	psql.PodLabels = psql.podLabels.ToStringMapOutput()
 
 	return ctx.RegisterResourceOutputs(psql, pulumi.Map{
-		"url":          psql.URL,
-		"accessSecret": psql.AccessSecret,
-		"podLabels":    psql.PodLabels,
+		"url":       psql.URL,
+		"podLabels": psql.PodLabels,
 	})
 }
