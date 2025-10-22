@@ -26,6 +26,14 @@ config:
     type: string
     description: 'The AccessMode for the PersistenVolumeClaim.'
     default: 'ReadWriteOnce'
+  ingress-namespace:
+    type: string
+    description: "The namespace where the ingress-controller is installed"
+    default: "default"
+  postgres-operator-namespace:
+    type: string
+    description: "The namespace where the postgres-operator is installed"
+    default: "default"
 
 ## CTFd Configuration
   ctfd-image:

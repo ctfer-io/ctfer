@@ -53,9 +53,10 @@ type CTFerArgs struct {
 	// PVCAccessModes defines the access modes supported by the PVC.
 	PVCAccessModes pulumi.StringArrayInput
 
-	IngressNamespace pulumi.StringInput
-	IngressLabels    pulumi.StringMapInput
-	Annotations      pulumi.StringMapInput
+	IngressNamespace          pulumi.StringInput
+	IngressLabels             pulumi.StringMapInput
+	PostgresOperatorNamespace pulumi.StringInput
+	Annotations               pulumi.StringMapInput
 
 	OTel *common.OTelArgs
 }
@@ -121,8 +122,9 @@ func (ctfer *CTFer) check(args *CTFerArgs) error {
 func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulumi.ResourceOption) (err error) {
 	// Deploy HA Dababase with PostgreSQL Operator
 	ctfer.postgres, err = components.NewPostgreSQL(ctx, "database", &components.PostgreSQLArgs{
-		Namespace: args.Namespace,
-		Registry:  args.ImagesRepository,
+		Namespace:                 args.Namespace,
+		Registry:                  args.ImagesRepository,
+		PostgresOperatorNamespace: args.PostgresOperatorNamespace,
 	}, opts...)
 	if err != nil {
 		return

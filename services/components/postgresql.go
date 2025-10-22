@@ -50,12 +50,19 @@ type PostgreSQLArgs struct {
 
 	ClusterNamePrefix pulumi.StringPtrInput
 	clusterNamePrefix pulumi.StringOutput
+
+	// PostgresOperatorNamespace is the namespace where the postgres-operator from zalando
+	// is installed.
+	// If non set, it is defaulted to "default" namespace.
+	PostgresOperatorNamespace pulumi.StringPtrInput
+	postgresOperatorNamespace pulumi.StringOutput
 }
 
 const (
-	defaultRegistry              = "ghcr.io/" // spilo is not pushed in docker.io
-	defaultClusterNamePrefix     = "ctfer-database"
-	defaultPgToApiServerTemplate = `
+	defaultRegistry                  = "ghcr.io/" // spilo is not pushed in docker.io
+	defaultClusterNamePrefix         = "ctfer-database"
+	defaultPostgresOperatorNamespace = "default"
+	defaultPgToApiServerTemplate     = `
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -78,6 +85,7 @@ spec:
 )
 
 // NewPostgreSQL creates a HA PostgreSQL cluster.
+// The https://github.com/zalando/postgres-operator with CRDs need to be installed on the cluster before.
 func NewPostgreSQL(ctx *pulumi.Context, name string, args *PostgreSQLArgs, opts ...pulumi.ResourceOption) (*PostgreSQL, error) {
 	psql := &PostgreSQL{}
 	args = psql.defaults(args)
@@ -142,6 +150,18 @@ func (psql *PostgreSQL) defaults(args *PostgreSQLArgs) *PostgreSQLArgs {
 				return defaultPgToApiServerTemplate
 			}
 			return *pgToApiServerTemplate
+		}).(pulumi.StringOutput)
+	}
+
+	// Define custom postgres-operator
+	args.postgresOperatorNamespace = pulumi.String(defaultPostgresOperatorNamespace).ToStringOutput()
+	if args.PostgresOperatorNamespace != nil {
+		args.postgresOperatorNamespace = args.PostgresOperatorNamespace.ToStringPtrOutput().ApplyT(func(in *string) string {
+			// No custom ClusterName
+			if in == nil || *in == "" {
+				return defaultPostgresOperatorNamespace
+			}
+			return *in
 		}).(pulumi.StringOutput)
 	}
 
@@ -285,7 +305,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 						netwv1.NetworkPolicyPeerArgs{
 							NamespaceSelector: metav1.LabelSelectorArgs{
 								MatchLabels: pulumi.StringMap{
-									"kubernetes.io/metadata.name": pulumi.String("default"), // XXX
+									"kubernetes.io/metadata.name": args.postgresOperatorNamespace,
 								},
 							},
 							// Do not use the PodSelector for the operator

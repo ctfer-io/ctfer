@@ -77,7 +77,7 @@ type CTFdArgs struct {
 	annotations pulumi.StringMapOutput
 }
 
-// NewCTFer creates a new pulumi Component Resource and registers it.
+// NewCTFd creates a new pulumi Component Resource and registers it.
 func NewCTFd(ctx *pulumi.Context, name string, args *CTFdArgs, opts ...pulumi.ResourceOption) (*CTFd, error) {
 	ctfd := &CTFd{}
 	args = ctfd.defaults(args)
