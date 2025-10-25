@@ -40,7 +40,6 @@ type PostgreSQLArgs struct {
 	Namespace pulumi.StringInput
 
 	Registry pulumi.StringPtrInput
-	registry pulumi.StringOutput
 
 	// PgToApiServerTemplate is a Go text/template that defines the NetworkPolicy
 	// YAML schema to use.
@@ -51,15 +50,17 @@ type PostgreSQLArgs struct {
 	ClusterNamePrefix pulumi.StringPtrInput
 	clusterNamePrefix pulumi.StringOutput
 
-	// PostgresOperatorNamespace is the namespace where the postgres-operator from zalando
-	// is installed.
-	// If non set, it is defaulted to "default" namespace.
+	// PostgresOperatorNamespace is the namespace where the postgres-operator
+	// from zalando is installed.
+	// If none set, it is defaulted to "default" namespace.
 	PostgresOperatorNamespace pulumi.StringPtrInput
 	postgresOperatorNamespace pulumi.StringOutput
+
+	StorageClassName pulumi.StringInput
+	storageClassName pulumi.StringPtrOutput
 }
 
 const (
-	defaultRegistry                  = "ghcr.io/" // spilo is not pushed in docker.io
 	defaultClusterNamePrefix         = "ctfer-database"
 	defaultPostgresOperatorNamespace = "default"
 	defaultPgToApiServerTemplate     = `
@@ -113,24 +114,6 @@ func (psql *PostgreSQL) defaults(args *PostgreSQLArgs) *PostgreSQLArgs {
 		args = &PostgreSQLArgs{}
 	}
 
-	// Define private registry if any
-	args.registry = pulumi.String(defaultRegistry).ToStringOutput()
-	if args.Registry != nil {
-		args.registry = args.Registry.ToStringPtrOutput().ApplyT(func(in *string) string {
-			// No private registry -> defaults to GitHub Container Registry
-			if in == nil || *in == "" {
-				return defaultRegistry
-			}
-
-			str := *in
-			// If one set, make sure it ends with one '/'
-			if str != "" && !strings.HasSuffix(str, "/") {
-				str = str + "/"
-			}
-			return str
-		}).(pulumi.StringOutput)
-	}
-
 	// Define custom clusterName prefix if any
 	args.clusterNamePrefix = pulumi.String(defaultClusterNamePrefix).ToStringOutput()
 	if args.ClusterNamePrefix != nil {
@@ -163,6 +146,17 @@ func (psql *PostgreSQL) defaults(args *PostgreSQLArgs) *PostgreSQLArgs {
 			}
 			return *in
 		}).(pulumi.StringOutput)
+	}
+
+	// Don't default storage class name -> will select the default one
+	// on the K8s cluster.
+	if args.StorageClassName != nil {
+		args.storageClassName = args.StorageClassName.ToStringOutput().ApplyT(func(scm string) *string {
+			if scm == "" {
+				return nil
+			}
+			return &scm
+		}).(pulumi.StringPtrOutput)
 	}
 
 	return args
@@ -391,7 +385,20 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 					"labels":    psql.podLabels,
 				},
 				"spec": pulumi.Map{
-					"dockerImage":       pulumi.Sprintf("%szalando/spilo-17:4.0-p3", args.registry),
+					// XXX tag
+					"dockerImage": args.Registry.ToStringPtrOutput().ApplyT(func(in *string) string {
+						// No private registry
+						if in == nil || *in == "" {
+							return "ghcr.io/zalando/spilo-17:4.0-p3" // default
+						}
+
+						str := *in
+						// If one set, make sure it ends with one '/'
+						if str != "" && !strings.HasSuffix(str, "/") {
+							str = str + "/"
+						}
+						return str + "zalando/spilo-17:4.0-p3"
+					}).(pulumi.StringOutput),
 					"teamId":            psql.userName,
 					"numberOfInstances": pulumi.Int(3), // TODO make it configurable
 					"users": pulumi.Map{
@@ -407,7 +414,8 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 						},
 					},
 					"volume": pulumi.Map{
-						"size": pulumi.String("10Gi"),
+						"size":         pulumi.String("10Gi"),
+						"storageClass": args.storageClassName,
 					},
 					"resources": pulumi.Map{
 						"requests": pulumi.Map{
@@ -419,21 +427,23 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 							"memory": pulumi.String("500Mi"),
 						},
 					},
-					// "patroni": pulumi.Map{
-					// 	"failsafe_mode": pulumi.Bool(false),
-					// 	"initdb": pulumi.Map{
-					// 		"encoding":       pulumi.String("UTF8"),
-					// 		"locale":         pulumi.String("en_US.UTF-8"),
-					// 		"data-checksums": pulumi.String("true"),
-					// 	},
-					// 	"ttl":                     pulumi.Int(30),
-					// 	"loop_wait":               pulumi.Int(10),
-					// 	"retry_timeout":           pulumi.Int(10),
-					// 	"synchronous_mode":        pulumi.Bool(false),
-					// 	"synchronous_mode_strict": pulumi.Bool(false),
-					// 	"synchronous_node_count":  pulumi.Int(1),
-					// 	"maximum_lag_on_failover": pulumi.Int(33554432),
-					// },
+					"enableConnectionPooler": pulumi.Bool(true), // enable PGBouncer, 2 Pods will be created by default
+					"connectionPooler": pulumi.Map{
+						// XXX tag
+						"dockerImage": args.Registry.ToStringPtrOutput().ApplyT(func(in *string) string {
+							// No private registry
+							if in == nil || *in == "" {
+								return "registry.opensource.zalan.do/acid/pgbouncer:master-32" // default
+							}
+
+							str := *in
+							// If one set, make sure it ends with one '/'
+							if str != "" && !strings.HasSuffix(str, "/") {
+								str = str + "/"
+							}
+							return str + "acid/pgbouncer:master-32"
+						}).(pulumi.StringOutput),
+					},
 				},
 			},
 		},
@@ -446,8 +456,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 }
 
 func (psql *PostgreSQL) outputs(ctx *pulumi.Context) error {
-	//psql.URL = pulumi.Sprintf("postgresql+psycopg2://%s:%s@%s:5432/ctfd", pulumi.String("postgres"), psql.postgresPass.Result, psql.clusterName)
-	psql.URL = pulumi.Sprintf("postgresql+psycopg2://%s:%s@%s:5432/%s", psql.userName, psql.userPass.Result, psql.clusterName, psql.userName)
+	psql.URL = pulumi.Sprintf("postgresql+psycopg2://%s:%s@%s-pooler:5432/%s", psql.userName, psql.userPass.Result, psql.clusterName, psql.userName)
 	psql.PodLabels = psql.podLabels.ToStringMapOutput()
 
 	return ctx.RegisterResourceOutputs(psql, pulumi.Map{

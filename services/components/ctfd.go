@@ -77,6 +77,10 @@ type CTFdArgs struct {
 	annotations pulumi.StringMapOutput
 }
 
+const (
+	defaultCTFdImage = "ctferio/ctfd:latest"
+)
+
 // NewCTFd creates a new pulumi Component Resource and registers it.
 func NewCTFd(ctx *pulumi.Context, name string, args *CTFdArgs, opts ...pulumi.ResourceOption) (*CTFd, error) {
 	ctfd := &CTFd{}
@@ -123,7 +127,7 @@ func (ctfd *CTFd) defaults(args *CTFdArgs) *CTFdArgs {
 		}).(pulumi.StringOutput)
 	}
 
-	args.image = pulumi.String("ctferio/ctfd:latest").ToStringOutput()
+	args.image = pulumi.String(defaultCTFdImage).ToStringOutput()
 	if args.Image != nil {
 		args.image = args.Image.ToStringOutput()
 	}
