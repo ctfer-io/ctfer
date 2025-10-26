@@ -200,13 +200,13 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 	// postgreSQL to kube-apiserver
 	psql.pgToApi, err = yamlv2.NewConfigGroup(ctx, "kube-apiserver-netpol", &yamlv2.ConfigGroupArgs{
 		Yaml: pulumi.All(args.pgToApiServerTemplate, args.Namespace, psql.podLabels).ApplyT(func(all []any) (string, error) {
-			cmToApiServerTemplate := all[0].(string)
+			pgToApiServerTemplate := all[0].(string)
 			namespace := all[1].(string)
 			podLabels := all[2].(map[string]string)
 
 			tmpl, _ := template.New("pg-to-apiserver").
 				Funcs(sprig.FuncMap()).
-				Parse(cmToApiServerTemplate)
+				Parse(pgToApiServerTemplate)
 
 			buf := &bytes.Buffer{}
 			if err := tmpl.Execute(buf, map[string]any{
