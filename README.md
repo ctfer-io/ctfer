@@ -8,6 +8,17 @@ CTFer is High-Availability and secure CTF deployment tool over Kubernetes.
 
 - Kubernetes cluster up and running (you can use our solution for that https://github.com/ctfer-io/ctfer-l3) ;
 - Generate and store your certs in certs folder.
+- Install the PostgreSQL operator by Zalando https://github.com/zalando/postgres-operator
+
+```bash
+# Add helm repo
+helm repo add postgres-operator-charts https://opensource.zalando.com/postgres-operator/charts/postgres-operator
+helm repo update
+
+# Install the operator with inherited_labels
+helm install postgres-operator postgres-operator-charts/postgres-operator --set "configKubernetes.inherited_labels={app.kubernetes.io/component,app.kubernetes.io/part-of,ctfer.io/stack-name}" --create-namespace --namespace postgres-operator
+
+```
 
 If you want to use local images.
 
@@ -142,3 +153,27 @@ Activer la feature dans le helm.
 ```
 
 Enfin, appliquer le manifest `hack/httpscaleobject.yaml`.
+
+# PostgreSQL DEBUG
+
+
+```bash
+
+# create kind cluster without CNI
+kind create cluster --config hack/kind-config.yaml
+
+# install cilium 
+helm install cilium cilium/cilium --version 1.18.2 \
+	--namespace kube-system   \
+	--set ipam.mode=kubernetes \
+	--set hubble.relay.enabled=true \
+    --set hubble.ui.enabled=true
+
+# install postgresql operator
+helm install postgres-operator postgres-operator-charts/postgres-operator --set "configKubernetes.inherited_labels={app.kubernetes.io/component,app.kubernetes.io/part-of,ctfer.io/stack-name}" --create-namespace --namespace postgres-operator
+
+# mimic node failure
+kubectl cordon kind-worker
+# then delete the master node
+
+```

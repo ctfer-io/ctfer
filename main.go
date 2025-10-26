@@ -87,18 +87,19 @@ func main() {
 			PVCAccessModes: pulumi.ToStringArray([]string{
 				cfg.PVCAccessMode,
 			}),
-			Crt:              cfg.Crt,
-			Key:              cfg.Key,
-			StorageSize:      pulumi.String(cfg.StorageSize),
-			Workers:          pulumi.Int(cfg.Workers),
-			Replicas:         pulumi.Int(cfg.Replicas),
-			ChartsRepository: pulumi.String(cfg.ChartsRepository),
-			ImagesRepository: pulumi.String(cfg.ImagesRepository),
-			ChallManagerURL:  pulumi.String(cfg.ChallManagerUrl),
-			Requests:         pulumi.ToStringMap(cfg.Requests),
-			Limits:           pulumi.ToStringMap(cfg.Limits),
-			IngressNamespace: pulumi.String(cfg.IngressNamespace),
-			IngressLabels:    pulumi.ToStringMap(cfg.IngressLabels),
+			Crt:                       cfg.Crt,
+			Key:                       cfg.Key,
+			StorageSize:               pulumi.String(cfg.StorageSize),
+			Workers:                   pulumi.Int(cfg.Workers),
+			Replicas:                  pulumi.Int(cfg.Replicas),
+			ChartsRepository:          pulumi.String(cfg.ChartsRepository),
+			ImagesRepository:          pulumi.String(cfg.ImagesRepository),
+			ChallManagerURL:           pulumi.String(cfg.ChallManagerUrl),
+			Requests:                  pulumi.ToStringMap(cfg.Requests),
+			Limits:                    pulumi.ToStringMap(cfg.Limits),
+			IngressNamespace:          pulumi.String(cfg.IngressNamespace),
+			IngressLabels:             pulumi.ToStringMap(cfg.IngressLabels),
+			PostgresOperatorNamespace: pulumi.String(cfg.PostgresOperatorNamespace),
 		}
 		if cfg.Otel != nil {
 			ctferArgs.OTel = &common.OTelArgs{
@@ -121,23 +122,24 @@ type (
 	// Config holds the values configured using pulumi CLI.
 	Config struct {
 		// Namespace in which ctfer will deploy the CTF.
-		Namespace        string
-		Hostname         string
-		ImagesRepository string
-		ChartsRepository string
-		StorageClassName string
-		PVCAccessMode    string
-		CTFdImage        string
-		ChallManagerUrl  string
-		StorageSize      string
-		Crt              pulumi.StringInput
-		Key              pulumi.StringInput
-		Replicas         int
-		Workers          int
-		Requests         map[string]string
-		Limits           map[string]string
-		IngressNamespace string
-		IngressLabels    map[string]string
+		Namespace                 string
+		Hostname                  string
+		ImagesRepository          string
+		ChartsRepository          string
+		StorageClassName          string
+		PVCAccessMode             string
+		CTFdImage                 string
+		ChallManagerUrl           string
+		StorageSize               string
+		Crt                       pulumi.StringInput
+		Key                       pulumi.StringInput
+		Replicas                  int
+		Workers                   int
+		Requests                  map[string]string
+		Limits                    map[string]string
+		IngressNamespace          string
+		PostgresOperatorNamespace string
+		IngressLabels             map[string]string
 
 		Otel *OtelConfig
 	}
@@ -151,20 +153,21 @@ type (
 func loadConfig(ctx *pulumi.Context) (*Config, error) {
 	cfg := config.New(ctx, "")
 	c := &Config{
-		Namespace:        cfg.Get("namespace"),
-		Hostname:         cfg.Get("hostname"),
-		ImagesRepository: cfg.Get("images-repository"),
-		ChartsRepository: cfg.Get("charts-repository"),
-		StorageClassName: cfg.Get("storage-class-name"),
-		PVCAccessMode:    cfg.Get("pvc-access-mode"),
-		CTFdImage:        cfg.Get("ctfd-image"),
-		ChallManagerUrl:  cfg.Get("chall-manager-url"),
-		Crt:              cfg.GetSecret("crt"),
-		Key:              cfg.GetSecret("key"),
-		StorageSize:      cfg.Get("storage-size"),
-		Replicas:         cfg.GetInt("replicas"),
-		Workers:          cfg.GetInt("workers"),
-		IngressNamespace: cfg.Get("ingress-namespace"),
+		Namespace:                 cfg.Get("namespace"),
+		Hostname:                  cfg.Get("hostname"),
+		ImagesRepository:          cfg.Get("images-repository"),
+		ChartsRepository:          cfg.Get("charts-repository"),
+		StorageClassName:          cfg.Get("storage-class-name"),
+		PVCAccessMode:             cfg.Get("pvc-access-mode"),
+		CTFdImage:                 cfg.Get("ctfd-image"),
+		ChallManagerUrl:           cfg.Get("chall-manager-url"),
+		Crt:                       cfg.GetSecret("crt"),
+		Key:                       cfg.GetSecret("key"),
+		StorageSize:               cfg.Get("storage-size"),
+		Replicas:                  cfg.GetInt("replicas"),
+		Workers:                   cfg.GetInt("workers"),
+		IngressNamespace:          cfg.Get("ingress-namespace"),
+		PostgresOperatorNamespace: cfg.Get("postgres-operator-namespace"),
 	}
 	if err := cfg.TryObject("requests", &c.Requests); err != nil {
 		return nil, err

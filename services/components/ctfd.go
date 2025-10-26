@@ -43,7 +43,7 @@ type CTFdArgs struct {
 	pvcAccessModes pulumi.StringArrayOutput
 
 	RedisURL        pulumi.StringInput
-	MariaDBURL      pulumi.StringInput
+	DatabaseURL     pulumi.StringInput
 	ChallManagerURL pulumi.StringInput
 	OTel            *common.OTelArgs
 
@@ -77,7 +77,11 @@ type CTFdArgs struct {
 	annotations pulumi.StringMapOutput
 }
 
-// NewCTFer creates a new pulumi Component Resource and registers it.
+const (
+	defaultCTFdImage = "ctferio/ctfd:latest"
+)
+
+// NewCTFd creates a new pulumi Component Resource and registers it.
 func NewCTFd(ctx *pulumi.Context, name string, args *CTFdArgs, opts ...pulumi.ResourceOption) (*CTFd, error) {
 	ctfd := &CTFd{}
 	args = ctfd.defaults(args)
@@ -123,7 +127,7 @@ func (ctfd *CTFd) defaults(args *CTFdArgs) *CTFdArgs {
 		}).(pulumi.StringOutput)
 	}
 
-	args.image = pulumi.String("ctferio/ctfd:latest").ToStringOutput()
+	args.image = pulumi.String(defaultCTFdImage).ToStringOutput()
 	if args.Image != nil {
 		args.image = args.Image.ToStringOutput()
 	}
@@ -206,8 +210,8 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			"secret_key": ctfd.secRand.B64Std,
 		},
 		StringData: pulumi.StringMap{
-			"redis-url":   args.RedisURL,
-			"mariadb-url": args.MariaDBURL,
+			"redis-url":    args.RedisURL,
+			"database-url": args.DatabaseURL,
 		},
 	}, opts...)
 	if err != nil {
@@ -243,7 +247,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 			ValueFrom: corev1.EnvVarSourceArgs{
 				SecretKeyRef: corev1.SecretKeySelectorArgs{
 					Name: ctfd.sec.Metadata.Name(),
-					Key:  pulumi.String("mariadb-url"),
+					Key:  pulumi.String("database-url"),
 				},
 			},
 		},
@@ -307,7 +311,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
 		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 		"redis-client":                pulumi.String("true"), // netpol podSelector
-		"mariadb-client":              pulumi.String("true"), // netpol podSelector
+		"postgresql-client":           pulumi.String("true"), // netpol podSelector
 	}.ToStringMapOutput()
 	ctfd.sts, err = appsv1.NewStatefulSet(ctx, "ctfd-sts", &appsv1.StatefulSetArgs{
 		Metadata: metav1.ObjectMetaArgs{

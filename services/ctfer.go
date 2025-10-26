@@ -20,9 +20,9 @@ import (
 type CTFer struct {
 	pulumi.ResourceState
 
-	maria *components.MariaDB
-	redis *components.Redis
-	ctfd  *components.CTFd
+	postgres *components.PostgreSQL
+	redis    *components.Redis
+	ctfd     *components.CTFd
 
 	ctfdNetpol *netwv1.NetworkPolicy
 
@@ -53,9 +53,10 @@ type CTFerArgs struct {
 	// PVCAccessModes defines the access modes supported by the PVC.
 	PVCAccessModes pulumi.StringArrayInput
 
-	IngressNamespace pulumi.StringInput
-	IngressLabels    pulumi.StringMapInput
-	Annotations      pulumi.StringMapInput
+	IngressNamespace          pulumi.StringInput
+	IngressLabels             pulumi.StringMapInput
+	PostgresOperatorNamespace pulumi.StringInput
+	Annotations               pulumi.StringMapInput
 
 	OTel *common.OTelArgs
 }
@@ -119,16 +120,11 @@ func (ctfer *CTFer) check(args *CTFerArgs) error {
 }
 
 func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulumi.ResourceOption) (err error) {
-	// Deploy HA MariaDB
-	// TODO scale up to >=3
-	// FIXME when scaled to 3, ctfd replicas errors
-	ctfer.maria, err = components.NewMariaDB(ctx, "database", &components.MariaDBArgs{
-		Namespace:        args.Namespace,
-		ChartsRepository: args.ChartsRepository,
-		ChartVersion:     pulumi.String("20.5.3"),
-		Registry:         args.ImagesRepository,
-		StorageClassName: args.StorageClassName,
-		PVCAccessModes:   args.PVCAccessModes,
+	// Deploy HA Dababase with PostgreSQL Operator
+	ctfer.postgres, err = components.NewPostgreSQL(ctx, "database", &components.PostgreSQLArgs{
+		Namespace:                 args.Namespace,
+		Registry:                  args.ImagesRepository,
+		PostgresOperatorNamespace: args.PostgresOperatorNamespace,
 	}, opts...)
 	if err != nil {
 		return
@@ -153,7 +149,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		Namespace: args.Namespace,
 
 		RedisURL:        ctfer.redis.URL,
-		MariaDBURL:      ctfer.maria.URL,
+		DatabaseURL:     ctfer.postgres.URL,
 		ChallManagerURL: args.ChallManagerURL,
 
 		Image:    args.CTFdImage,
@@ -180,7 +176,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		}
 	}
 	ctfer.ctfd, err = components.NewCTFd(ctx, "platform", ctfdArgs, append(opts, pulumi.DependsOn([]pulumi.Resource{
-		ctfer.maria,
+		ctfer.postgres,
 		ctfer.redis,
 	}))...)
 	if err != nil {
@@ -252,7 +248,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 						},
 					},
 				},
-				// -> MariaDB
+				// -> PostgreSQL
 				netwv1.NetworkPolicyEgressRuleArgs{
 					To: netwv1.NetworkPolicyPeerArray{
 						netwv1.NetworkPolicyPeerArgs{
@@ -262,13 +258,13 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 								},
 							},
 							PodSelector: metav1.LabelSelectorArgs{
-								MatchLabels: ctfer.maria.PodLabels,
+								MatchLabels: ctfer.postgres.PodLabels,
 							},
 						},
 					},
 					Ports: netwv1.NetworkPolicyPortArray{
 						netwv1.NetworkPolicyPortArgs{
-							Port:     parseURLPort(ctfer.maria.URL),
+							Port:     parseURLPort(ctfer.postgres.URL),
 							Protocol: pulumi.String("TCP"),
 						},
 					},
