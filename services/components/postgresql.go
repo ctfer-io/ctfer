@@ -204,7 +204,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 			namespace := all[1].(string)
 			podLabels := all[2].(map[string]string)
 
-			tmpl, _ := template.New("cm-to-apiserver").
+			tmpl, _ := template.New("pg-to-apiserver").
 				Funcs(sprig.FuncMap()).
 				Parse(cmToApiServerTemplate)
 
@@ -302,13 +302,6 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 									"kubernetes.io/metadata.name": args.postgresOperatorNamespace,
 								},
 							},
-							// Do not use the PodSelector for the operator
-							// PodSelector: metav1.LabelSelectorArgs{
-							// 	MatchLabels: pulumi.StringMap{
-							// 		"app.kubernetes.io/name":     pulumi.String("postgres-operator"),
-							// 		"app.kubernetes.io/instance": pulumi.String("postgres-operator"),
-							// 	},
-							// },
 						},
 					},
 					Ports: netwv1.NetworkPolicyPortArray{
