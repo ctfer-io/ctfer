@@ -2,7 +2,6 @@ package components
 
 import (
 	"bytes"
-	"strings"
 	"sync"
 	"text/template"
 
@@ -25,15 +24,23 @@ type PostgreSQL struct {
 	userSec  *corev1.Secret
 
 	cluster     *yamlv2.ConfigGroup
+	pooler      *yamlv2.ConfigGroup
 	clusterName pulumi.StringInput
 
 	// Netpols
-	pgToApi      *yamlv2.ConfigGroup
-	pgFromClient *netwv1.NetworkPolicy
+	pgToApi          *yamlv2.ConfigGroup
+	poolerFromClient *netwv1.NetworkPolicy
+	poolerToPg       *netwv1.NetworkPolicy
+	pgFromPooler     *netwv1.NetworkPolicy
+	pgReplication    *netwv1.NetworkPolicy
+	pgFromOperator   *netwv1.NetworkPolicy
 
 	URL       pulumi.StringOutput
 	PodLabels pulumi.StringMapOutput
-	podLabels pulumi.StringMapInput
+
+	commonLabels    pulumi.StringMapInput
+	poolerPodLabels pulumi.StringMapInput
+	pgPodLabels     pulumi.StringMapInput
 }
 
 type PostgreSQLArgs struct {
@@ -51,7 +58,7 @@ type PostgreSQLArgs struct {
 	clusterNamePrefix pulumi.StringOutput
 
 	// PostgresOperatorNamespace is the namespace where the postgres-operator
-	// from zalando is installed.
+	// from cnpg is installed.
 	// If none set, it is defaulted to "default" namespace.
 	PostgresOperatorNamespace pulumi.StringPtrInput
 	postgresOperatorNamespace pulumi.StringOutput
@@ -191,15 +198,30 @@ func (psql *PostgreSQL) check(args *PostgreSQLArgs) error {
 
 func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opts ...pulumi.ResourceOption) (err error) {
 
-	psql.podLabels = pulumi.StringMap{
-		"app.kubernetes.io/component": pulumi.String("postgresql"),
+	psql.clusterName = pulumi.Sprintf("%s-%s", args.clusterNamePrefix, ctx.Stack())
+	psql.commonLabels = pulumi.StringMap{
+		"app.kubernetes.io/component": pulumi.String("database"),
+		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
+	}
+
+	psql.poolerPodLabels = pulumi.StringMap{
+		"app.kubernetes.io/name":      pulumi.String("pgbouncer"),
+		"app.kubernetes.io/component": pulumi.String("database"),
+		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
+	}
+
+	psql.pgPodLabels = pulumi.StringMap{
+		"app.kubernetes.io/name":      pulumi.String("postgresql"),
+		"app.kubernetes.io/component": pulumi.String("database"),
 		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
 		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 	}
 
 	// postgreSQL to kube-apiserver
 	psql.pgToApi, err = yamlv2.NewConfigGroup(ctx, "kube-apiserver-netpol", &yamlv2.ConfigGroupArgs{
-		Yaml: pulumi.All(args.pgToApiServerTemplate, args.Namespace, psql.podLabels).ApplyT(func(all []any) (string, error) {
+		Yaml: pulumi.All(args.pgToApiServerTemplate, args.Namespace, psql.commonLabels).ApplyT(func(all []any) (string, error) {
 			pgToApiServerTemplate := all[0].(string)
 			namespace := all[1].(string)
 			podLabels := all[2].(map[string]string)
@@ -223,9 +245,6 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 		return err
 	}
 
-	psql.clusterName = pulumi.Sprintf("%s-%s", args.clusterNamePrefix, ctx.Stack())
-
-	// see https://github.com/zalando/postgres-operator/issues/553
 	// password for owner user (ctfd)
 	username := "ctfd"
 	psql.userName = pulumi.String(username)
@@ -239,11 +258,10 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 
 	psql.userSec, err = corev1.NewSecret(ctx, "owner-access-secret", &corev1.SecretArgs{
 		Metadata: metav1.ObjectMetaArgs{
-			Name:      pulumi.Sprintf("%s.%s.credentials.postgresql.acid.zalan.do", psql.userName, psql.clusterName), //need to hardcode the name to override the generated secret from operator
 			Namespace: args.Namespace,
-			Labels:    psql.podLabels,
+			Labels:    psql.commonLabels,
 		},
-		Type: pulumi.String("Opaque"),
+		Type: pulumi.String("kubernetes.io/basic-auth"),
 		StringData: pulumi.ToStringMapOutput(map[string]pulumi.StringOutput{
 			"username": psql.userName.ToStringOutput(),
 			"password": psql.userPass.Result,
@@ -253,47 +271,20 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 		return err
 	}
 
-	// Allows clients from the same stack
-	psql.pgFromClient, err = netwv1.NewNetworkPolicy(ctx, "pg-from-client-netpol", &netwv1.NetworkPolicyArgs{
+	// Allow traffic from cnpg-system to Pg and Pooler
+	psql.pgFromOperator, err = netwv1.NewNetworkPolicy(ctx, "pg-from-operator-netpol", &netwv1.NetworkPolicyArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Namespace: args.Namespace,
-			Labels:    psql.podLabels,
+			Labels:    psql.commonLabels,
 		},
 		Spec: netwv1.NetworkPolicySpecArgs{
 			PolicyTypes: pulumi.ToStringArray([]string{
 				"Ingress",
-				"Egress",
 			}),
 			PodSelector: metav1.LabelSelectorArgs{
-				MatchLabels: psql.podLabels,
+				MatchLabels: psql.commonLabels,
 			},
 			Ingress: netwv1.NetworkPolicyIngressRuleArray{
-				// Allows from explicit clients (e.g CTFd)
-				netwv1.NetworkPolicyIngressRuleArgs{
-					From: netwv1.NetworkPolicyPeerArray{
-						netwv1.NetworkPolicyPeerArgs{
-							NamespaceSelector: metav1.LabelSelectorArgs{
-								MatchLabels: pulumi.StringMap{
-									"kubernetes.io/metadata.name": args.Namespace,
-								},
-							},
-							PodSelector: metav1.LabelSelectorArgs{
-								MatchLabels: pulumi.StringMap{
-									"postgresql-client":         pulumi.String("true"), // CTFd
-									"app.kubernetes.io/part-of": pulumi.String("ctfer"),
-									"ctfer.io/stack-name":       pulumi.String(ctx.Stack()),
-								},
-							},
-						},
-					},
-					Ports: netwv1.NetworkPolicyPortArray{
-						netwv1.NetworkPolicyPortArgs{
-							Port:     pulumi.Int(5432),
-							Protocol: pulumi.String("TCP"),
-						},
-					},
-				},
-				// Allows from postgresql-operator
 				netwv1.NetworkPolicyIngressRuleArgs{
 					From: netwv1.NetworkPolicyPeerArray{
 						netwv1.NetworkPolicyPeerArgs{
@@ -310,49 +301,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 							Protocol: pulumi.String("TCP"),
 						},
 						netwv1.NetworkPolicyPortArgs{
-							Port:     pulumi.Int(8008), // Patroni
-							Protocol: pulumi.String("TCP"),
-						},
-					},
-				},
-				// Allows from itself for replication
-				netwv1.NetworkPolicyIngressRuleArgs{
-					From: netwv1.NetworkPolicyPeerArray{
-						netwv1.NetworkPolicyPeerArgs{
-							PodSelector: metav1.LabelSelectorArgs{
-								MatchLabels: psql.podLabels,
-							},
-						},
-					},
-					Ports: netwv1.NetworkPolicyPortArray{
-						netwv1.NetworkPolicyPortArgs{
-							Port:     pulumi.Int(5432), // PostgreSQL
-							Protocol: pulumi.String("TCP"),
-						},
-						netwv1.NetworkPolicyPortArgs{
-							Port:     pulumi.Int(8008), // Patroni
-							Protocol: pulumi.String("TCP"),
-						},
-					},
-				},
-			},
-			Egress: netwv1.NetworkPolicyEgressRuleArray{
-				// Allows to itself for replication
-				netwv1.NetworkPolicyEgressRuleArgs{
-					To: netwv1.NetworkPolicyPeerArray{
-						netwv1.NetworkPolicyPeerArgs{
-							PodSelector: metav1.LabelSelectorArgs{
-								MatchLabels: psql.podLabels,
-							},
-						},
-					},
-					Ports: netwv1.NetworkPolicyPortArray{
-						netwv1.NetworkPolicyPortArgs{
-							Port:     pulumi.Int(5432), // PostgreSQL
-							Protocol: pulumi.String("TCP"),
-						},
-						netwv1.NetworkPolicyPortArgs{
-							Port:     pulumi.Int(8008), // Patroni
+							Port:     pulumi.Int(8000), // Status
 							Protocol: pulumi.String("TCP"),
 						},
 					},
@@ -364,51 +313,216 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 		return err
 	}
 
-	opts = append(opts, pulumi.DependsOn([]pulumi.Resource{psql.pgToApi, psql.userSec, psql.pgFromClient}))
+	// Allows Postgres from PGBouncer
+	psql.pgFromPooler, err = netwv1.NewNetworkPolicy(ctx, "pg-from-pooler-netpol", &netwv1.NetworkPolicyArgs{
+		Metadata: metav1.ObjectMetaArgs{
+			Namespace: args.Namespace,
+			Labels:    psql.commonLabels,
+		},
+		Spec: netwv1.NetworkPolicySpecArgs{
+			PolicyTypes: pulumi.ToStringArray([]string{
+				"Ingress",
+			}),
+			PodSelector: metav1.LabelSelectorArgs{
+				MatchLabels: psql.pgPodLabels,
+			},
+			Ingress: netwv1.NetworkPolicyIngressRuleArray{
+				netwv1.NetworkPolicyIngressRuleArgs{
+					From: netwv1.NetworkPolicyPeerArray{
+						netwv1.NetworkPolicyPeerArgs{
+							PodSelector: metav1.LabelSelectorArgs{
+								MatchLabels: psql.poolerPodLabels,
+							},
+						},
+					},
+					Ports: netwv1.NetworkPolicyPortArray{
+						netwv1.NetworkPolicyPortArgs{
+							Port:     pulumi.Int(5432), // PostgreSQL
+							Protocol: pulumi.String("TCP"),
+						},
+						// Check if Status needed ?
+					},
+				},
+			},
+		},
+	}, opts...)
+	if err != nil {
+		return err
+	}
+
+	// Allows PGBouncer to Postgres
+	psql.poolerToPg, err = netwv1.NewNetworkPolicy(ctx, "pooler-to-pg-netpol", &netwv1.NetworkPolicyArgs{
+		Metadata: metav1.ObjectMetaArgs{
+			Namespace: args.Namespace,
+			Labels:    psql.commonLabels,
+		},
+		Spec: netwv1.NetworkPolicySpecArgs{
+			PolicyTypes: pulumi.ToStringArray([]string{
+				"Egress",
+			}),
+			PodSelector: metav1.LabelSelectorArgs{
+				MatchLabels: psql.poolerPodLabels,
+			},
+			Egress: netwv1.NetworkPolicyEgressRuleArray{
+				netwv1.NetworkPolicyEgressRuleArgs{
+					To: netwv1.NetworkPolicyPeerArray{
+						netwv1.NetworkPolicyPeerArgs{
+							PodSelector: metav1.LabelSelectorArgs{
+								MatchLabels: psql.pgPodLabels,
+							},
+						},
+					},
+					Ports: netwv1.NetworkPolicyPortArray{
+						netwv1.NetworkPolicyPortArgs{
+							Port:     pulumi.Int(5432), // PostgreSQL
+							Protocol: pulumi.String("TCP"),
+						},
+					},
+				},
+			},
+		},
+	}, opts...)
+	if err != nil {
+		return err
+	}
+
+	// Allows Postgres to each other for replication
+	psql.pgReplication, err = netwv1.NewNetworkPolicy(ctx, "pg-replication-netpol", &netwv1.NetworkPolicyArgs{
+		Metadata: metav1.ObjectMetaArgs{
+			Namespace: args.Namespace,
+			Labels:    psql.commonLabels,
+		},
+		Spec: netwv1.NetworkPolicySpecArgs{
+			PolicyTypes: pulumi.ToStringArray([]string{
+				"Ingress",
+				"Egress",
+			}),
+			PodSelector: metav1.LabelSelectorArgs{
+				MatchLabels: psql.pgPodLabels,
+			},
+			Ingress: netwv1.NetworkPolicyIngressRuleArray{
+				netwv1.NetworkPolicyIngressRuleArgs{
+					From: netwv1.NetworkPolicyPeerArray{
+						netwv1.NetworkPolicyPeerArgs{
+							PodSelector: metav1.LabelSelectorArgs{
+								MatchLabels: psql.pgPodLabels,
+							},
+						},
+					},
+					Ports: netwv1.NetworkPolicyPortArray{
+						netwv1.NetworkPolicyPortArgs{
+							Port:     pulumi.Int(5432), // PostgreSQL
+							Protocol: pulumi.String("TCP"),
+						},
+						netwv1.NetworkPolicyPortArgs{
+							Port:     pulumi.Int(8000), // Status
+							Protocol: pulumi.String("TCP"),
+						},
+					},
+				},
+			},
+			Egress: netwv1.NetworkPolicyEgressRuleArray{
+				netwv1.NetworkPolicyEgressRuleArgs{
+					To: netwv1.NetworkPolicyPeerArray{
+						netwv1.NetworkPolicyPeerArgs{
+							PodSelector: metav1.LabelSelectorArgs{
+								MatchLabels: psql.pgPodLabels,
+							},
+						},
+					},
+					Ports: netwv1.NetworkPolicyPortArray{
+						netwv1.NetworkPolicyPortArgs{
+							Port:     pulumi.Int(5432), // PostgreSQL
+							Protocol: pulumi.String("TCP"),
+						},
+						netwv1.NetworkPolicyPortArgs{
+							Port:     pulumi.Int(8000), // Status
+							Protocol: pulumi.String("TCP"),
+						},
+					},
+				},
+			},
+		},
+	}, opts...)
+	if err != nil {
+		return err
+	}
+
+	// Allows clients from the same stack to pooler
+	psql.poolerFromClient, err = netwv1.NewNetworkPolicy(ctx, "pooler-from-client-netpol", &netwv1.NetworkPolicyArgs{
+		Metadata: metav1.ObjectMetaArgs{
+			Namespace: args.Namespace,
+			Labels:    psql.commonLabels,
+		},
+		Spec: netwv1.NetworkPolicySpecArgs{
+			PolicyTypes: pulumi.ToStringArray([]string{
+				"Ingress",
+			}),
+			PodSelector: metav1.LabelSelectorArgs{
+				MatchLabels: psql.poolerPodLabels,
+			},
+			Ingress: netwv1.NetworkPolicyIngressRuleArray{
+				// Allows from explicit clients (e.g CTFd)
+				netwv1.NetworkPolicyIngressRuleArgs{
+					From: netwv1.NetworkPolicyPeerArray{
+						netwv1.NetworkPolicyPeerArgs{
+							NamespaceSelector: metav1.LabelSelectorArgs{
+								MatchLabels: pulumi.StringMap{
+									"kubernetes.io/metadata.name": args.Namespace,
+								},
+							},
+							PodSelector: metav1.LabelSelectorArgs{
+								MatchLabels: pulumi.StringMap{
+									"postgresql-client": pulumi.String("true"), // CTFd
+								},
+							},
+						},
+					},
+					Ports: netwv1.NetworkPolicyPortArray{
+						netwv1.NetworkPolicyPortArgs{
+							Port:     pulumi.Int(5432),
+							Protocol: pulumi.String("TCP"),
+						},
+					},
+				},
+			},
+		},
+	}, opts...)
+	if err != nil {
+		return err
+	}
+
+	opts = append(opts, pulumi.DependsOn([]pulumi.Resource{psql.userSec, psql.pgToApi, psql.poolerFromClient, psql.poolerToPg, psql.pgFromPooler, psql.pgReplication, psql.pgFromOperator}))
 
 	// Create cluster with postgres-operator
 	psql.cluster, err = yamlv2.NewConfigGroup(ctx, "database-cluster", &yamlv2.ConfigGroupArgs{
 		Objs: pulumi.Array{
+			// Cluster
 			pulumi.Map{
-				"apiVersion": pulumi.String("acid.zalan.do/v1"),
-				"kind":       pulumi.String("postgresql"),
+				"apiVersion": pulumi.String("postgresql.cnpg.io/v1"),
+				"kind":       pulumi.String("Cluster"),
 				"metadata": pulumi.Map{
 					"name":      psql.clusterName,
 					"namespace": args.Namespace,
-					"labels":    psql.podLabels,
+					"labels":    psql.pgPodLabels,
 				},
 				"spec": pulumi.Map{
-					// XXX tag
-					"dockerImage": args.Registry.ToStringPtrOutput().ApplyT(func(in *string) string {
-						// No private registry
-						if in == nil || *in == "" {
-							return "ghcr.io/zalando/spilo-17:4.0-p3" // default
-						}
-
-						str := *in
-						// If one set, make sure it ends with one '/'
-						if str != "" && !strings.HasSuffix(str, "/") {
-							str = str + "/"
-						}
-						return str + "zalando/spilo-17:4.0-p3"
-					}).(pulumi.StringOutput),
-					"teamId":            psql.userName,
-					"numberOfInstances": pulumi.Int(3), // TODO make it configurable
-					"users": pulumi.Map{
-						username: pulumi.StringArray{},
+					"instances": pulumi.Int(3), // TODO make it configurable
+					"inheritedMetadata": pulumi.Map{
+						"labels": psql.pgPodLabels,
 					},
-					"databases": pulumi.Map{
-						username: psql.userName,
-					},
-					"postgresql": pulumi.Map{
-						"version": pulumi.String("17"),
-						"parameters": pulumi.Map{
-							"password_encryption": pulumi.String("scram-sha-256"),
-						},
-					},
-					"volume": pulumi.Map{
-						"size":         pulumi.String("10Gi"),
+					"storage": pulumi.Map{
+						"size":         pulumi.String("10Gi"), // TODO make it configurable
 						"storageClass": args.storageClassName,
+					},
+					"bootstrap": pulumi.Map{
+						"initdb": pulumi.Map{
+							"database": pulumi.String("ctfd"),
+							"owner":    psql.userName,
+							"secret": pulumi.Map{
+								"name": psql.userSec.Metadata.Name(),
+							},
+						},
 					},
 					"resources": pulumi.Map{
 						"requests": pulumi.Map{
@@ -420,22 +534,52 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 							"memory": pulumi.String("500Mi"),
 						},
 					},
-					"enableConnectionPooler": pulumi.Bool(true), // enable PGBouncer, 2 Pods will be created by default
-					"connectionPooler": pulumi.Map{
-						// XXX tag
-						"dockerImage": args.Registry.ToStringPtrOutput().ApplyT(func(in *string) string {
-							// No private registry
-							if in == nil || *in == "" {
-								return "registry.opensource.zalan.do/acid/pgbouncer:master-32" // default
-							}
+				},
+			},
+		},
+	}, opts...)
+	if err != nil {
+		return err
+	}
 
-							str := *in
-							// If one set, make sure it ends with one '/'
-							if str != "" && !strings.HasSuffix(str, "/") {
-								str = str + "/"
-							}
-							return str + "acid/pgbouncer:master-32"
-						}).(pulumi.StringOutput),
+	// pooler explicit deps with cluster
+	opts = append(opts, pulumi.DependsOn([]pulumi.Resource{psql.cluster}))
+	psql.pooler, err = yamlv2.NewConfigGroup(ctx, "database-pooler", &yamlv2.ConfigGroupArgs{
+		Objs: pulumi.Array{
+			// Pooler
+			pulumi.Map{
+				"apiVersion": pulumi.String("postgresql.cnpg.io/v1"),
+				"kind":       pulumi.String("Pooler"),
+				"metadata": pulumi.Map{
+					"name":      pulumi.Sprintf("%s-pooler", psql.clusterName),
+					"namespace": args.Namespace,
+					"labels":    psql.poolerPodLabels,
+				},
+				"spec": pulumi.Map{
+					"cluster": pulumi.Map{
+						"name": psql.clusterName,
+					},
+					"instances": pulumi.Int(3),
+					"type":      pulumi.String("rw"),
+					"template": pulumi.Map{
+						"metadata": pulumi.Map{
+							"labels": psql.poolerPodLabels, // label on Pooler Pod's
+						},
+					},
+					"serviceTemplate": pulumi.Map{
+						"metadata": pulumi.Map{
+							"labels": psql.poolerPodLabels,
+						},
+						"spec": pulumi.Map{
+							"type": pulumi.String("ClusterIP"),
+						},
+					},
+					"pgbouncer": pulumi.Map{
+						"poolMode": pulumi.String("session"),
+						"parameters": pulumi.Map{
+							"max_client_conn":   pulumi.String("1000"),
+							"default_pool_size": pulumi.String("10"),
+						},
 					},
 				},
 			},
@@ -450,7 +594,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 
 func (psql *PostgreSQL) outputs(ctx *pulumi.Context) error {
 	psql.URL = pulumi.Sprintf("postgresql+psycopg2://%s:%s@%s-pooler:5432/%s", psql.userName, psql.userPass.Result, psql.clusterName, psql.userName)
-	psql.PodLabels = psql.podLabels.ToStringMapOutput()
+	psql.PodLabels = psql.poolerPodLabels.ToStringMapOutput()
 
 	return ctx.RegisterResourceOutputs(psql, pulumi.Map{
 		"url":       psql.URL,

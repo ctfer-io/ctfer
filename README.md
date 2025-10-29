@@ -156,6 +156,7 @@ Enfin, appliquer le manifest `hack/httpscaleobject.yaml`.
 
 # PostgreSQL DEBUG
 
+## Zalando
 
 ```bash
 
@@ -171,6 +172,33 @@ helm install cilium cilium/cilium --version 1.18.2 \
 
 # install postgresql operator
 helm install postgres-operator postgres-operator-charts/postgres-operator --set "configKubernetes.inherited_labels={app.kubernetes.io/component,app.kubernetes.io/part-of,ctfer.io/stack-name}" --create-namespace --namespace postgres-operator
+
+# mimic node failure
+kubectl cordon kind-worker
+# then delete the master node
+
+```
+
+## CNPG
+
+```bash
+
+# create kind cluster without CNI
+kind create cluster --config hack/kind-config.yaml
+
+# install cilium 
+helm install cilium cilium/cilium --version 1.18.2 \
+	--namespace kube-system   \
+	--set ipam.mode=kubernetes \
+	--set hubble.relay.enabled=true \
+    --set hubble.ui.enabled=true
+
+# Install cnpg operator
+helm repo add cnpg https://cloudnative-pg.github.io/charts
+helm upgrade --install cnpg \
+  --namespace cnpg-system \
+  --create-namespace \
+  cnpg/cloudnative-pg
 
 # mimic node failure
 kubectl cordon kind-worker

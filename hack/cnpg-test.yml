@@ -1,0 +1,57 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ctfd-pg-creds
+stringData:
+  password: super-secure-password
+  username: ctfd
+type: kubernetes.io/basic-auth
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+spec:
+  instances: 3
+
+  storage:
+    storageClass: standard
+    size: 1Gi
+
+  bootstrap:
+    initdb:
+      database: ctfd
+      owner: ctfd
+      secret:
+        name: ctfd-pg-creds
+
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "1"
+    limits:
+      memory: "1Gi"
+      cpu: "2"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: pooler-example-rw
+spec:
+  cluster:
+    name: cluster-example
+  instances: 3
+  type: rw
+  serviceTemplate:
+    metadata:
+      labels:
+        app: pooler
+    spec:
+      type: ClusterIP
+  pgbouncer:
+    poolMode: session
+    parameters:
+      max_client_conn: "1000"
+      default_pool_size: "10"
+  
