@@ -575,7 +575,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 						},
 					},
 					"pgbouncer": pulumi.Map{
-						"poolMode": pulumi.String("session"),
+						"poolMode": pulumi.String("transaction"),
 						"parameters": pulumi.Map{
 							"max_client_conn":   pulumi.String("1000"),
 							"default_pool_size": pulumi.String("10"),
