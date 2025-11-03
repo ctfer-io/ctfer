@@ -298,8 +298,8 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 						"memory": pulumi.String("256Mi"),
 					},
 					"limits": pulumi.Map{
-						"cpu":    pulumi.String("500m"),
-						"memory": pulumi.String("512Mi"),
+						"cpu":    pulumi.String("1000m"),
+						"memory": pulumi.String("1024Mi"),
 					},
 				},
 			},
@@ -317,8 +317,8 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 						"memory": pulumi.String("256Mi"),
 					},
 					"limits": pulumi.Map{
-						"cpu":    pulumi.String("500m"),
-						"memory": pulumi.String("512Mi"),
+						"cpu":    pulumi.String("1000m"),
+						"memory": pulumi.String("1024Mi"),
 					},
 				},
 			},
