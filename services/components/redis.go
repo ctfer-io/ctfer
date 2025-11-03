@@ -208,7 +208,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 			namespace := all[1].(string)
 			podLabels := all[2].(map[string]string)
 
-			tmpl, _ := template.New("pg-to-apiserver").
+			tmpl, _ := template.New("redis-to-apiserver").
 				Funcs(sprig.FuncMap()).
 				Parse(redisToApiServerTemplate)
 
@@ -224,7 +224,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 		}).(pulumi.StringOutput),
 	}, opts...)
 	if err != nil {
-		return err
+		return
 	}
 
 	// => Secret
@@ -233,7 +233,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 		Special: pulumi.BoolPtr(false),
 	}, opts...)
 	if err != nil {
-		return err
+		return
 	}
 
 	rd.sec, err = corev1.NewSecret(ctx, "redis-secret", &corev1.SecretArgs{
@@ -247,7 +247,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 		}),
 	}, opts...)
 	if err != nil {
-		return err
+		return
 	}
 
 	rd.chart, err = helmv4.NewChart(ctx, "redis", &helmv4.ChartArgs{
@@ -375,10 +375,10 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 		},
 	}, opts...)
 	if err != nil {
-		return err
+		return
 	}
 
-	return nil
+	return
 }
 
 func (rd *Redis) outputs(ctx *pulumi.Context) error {
