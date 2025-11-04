@@ -512,8 +512,8 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 						"labels": psql.pgPodLabels,
 					},
 					"storage": pulumi.Map{
-						"size":         pulumi.String("10Gi"), // TODO make it configurable
-						"storageClass": args.storageClassName,
+						"size":         pulumi.String("10Gi"),       // TODO make it configurable
+						"storageClass": pulumi.String("local-path"), // TODO make it configurable
 					},
 					"bootstrap": pulumi.Map{
 						"initdb": pulumi.Map{
