@@ -359,16 +359,21 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 								Requests: args.Requests,
 								Limits:   args.Limits,
 							},
-							ReadinessProbe: corev1.ProbeArgs{
+							StartupProbe: corev1.ProbeArgs{
 								HttpGet: corev1.HTTPGetActionArgs{
-									Path: pulumi.String("/"),
+									Path: pulumi.String("/healthcheck"),
 									Port: pulumi.Int(8000),
 								},
 								InitialDelaySeconds: pulumi.Int(30),
 								PeriodSeconds:       pulumi.Int(3),
 								TimeoutSeconds:      pulumi.Int(5),
-								SuccessThreshold:    pulumi.Int(1),
-								FailureThreshold:    pulumi.Int(3),
+							},
+							LivenessProbe: corev1.ProbeArgs{
+								HttpGet: corev1.HTTPGetActionArgs{
+									Path: pulumi.String("/healthcheck"),
+									Port: pulumi.Int(8000),
+								},
+								TimeoutSeconds: pulumi.Int(5),
 							},
 						},
 					},
