@@ -61,13 +61,6 @@ type RedisArgs struct {
 	ChartVersion     pulumi.StringInput
 	Registry         pulumi.StringInput
 
-	StorageClassName pulumi.StringInput
-	storageClassName pulumi.StringPtrOutput
-
-	// PVCAccessModes defines the access modes supported by the PVC.
-	PVCAccessModes pulumi.StringArrayInput
-	pvcAccessModes pulumi.StringArrayOutput
-
 	// RedisToApiServerTemplate is a Go text/template that defines the NetworkPolicy
 	// YAML schema to use.
 	// If none set, it is defaulted to a cilium.io/v2 CiliumNetworkPolicy.
@@ -131,28 +124,6 @@ func (rd *Redis) defaults(args *RedisArgs) *RedisArgs {
 			}
 			return str
 		}).(pulumi.StringOutput)
-	}
-
-	// Don't default storage class name -> will select the default one
-	// on the K8s cluster.
-	if args.StorageClassName != nil {
-		args.storageClassName = args.StorageClassName.ToStringOutput().ApplyT(func(scm string) *string {
-			if scm == "" {
-				return nil
-			}
-			return &scm
-		}).(pulumi.StringPtrOutput)
-	}
-
-	// The accessModes cannot be empty on a PVC, use ReadWriteOnce
-	args.pvcAccessModes = pulumi.ToStringArray(defaultPVCAccessModes).ToStringArrayOutput()
-	if args.PVCAccessModes != nil {
-		args.pvcAccessModes = args.PVCAccessModes.ToStringArrayOutput().ApplyT(func(am []string) []string {
-			if len(am) == 0 {
-				return defaultPVCAccessModes
-			}
-			return am
-		}).(pulumi.StringArrayOutput)
 	}
 
 	args.redisToApiServerTemplate = pulumi.String(defaultRedisToApiServerTemplate).ToStringOutput()
@@ -274,8 +245,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 			},
 			"master": pulumi.Map{
 				"persistence": pulumi.Map{
-					"storageClass": args.storageClassName,
-					"accessModes":  args.pvcAccessModes,
+					"enabled": pulumi.Bool(false),
 				},
 				// Taint-Based Eviction
 				"tolerations": pulumi.MapArray{
@@ -307,8 +277,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 			"replica": pulumi.Map{
 				"replicaCount": pulumi.Int(3),
 				"persistence": pulumi.Map{
-					"storageClass": args.storageClassName,
-					"accessModes":  args.pvcAccessModes,
+					"enabled": pulumi.Bool(false),
 				},
 				"automountServiceAccountToken": pulumi.Bool(true),
 				"resources": pulumi.Map{
@@ -331,9 +300,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 					"repository": pulumi.String("bitnamilegacy/redis-sentinel"),
 				},
 				"persistence": pulumi.Map{
-					"enabled":      pulumi.Bool(true),
-					"storageClass": args.storageClassName,
-					"accessModes":  args.pvcAccessModes,
+					"enabled": pulumi.Bool(false),
 				},
 				"masterService": pulumi.Map{
 					"enabled": pulumi.Bool(true), // create a service that route traffic on master only
