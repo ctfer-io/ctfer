@@ -138,8 +138,6 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		ChartsRepository: args.ChartsRepository,
 		ChartVersion:     pulumi.String("20.13.4"),
 		Registry:         args.ImagesRepository,
-		StorageClassName: args.StorageClassName,
-		PVCAccessModes:   args.PVCAccessModes,
 	}, opts...)
 	if err != nil {
 		return
