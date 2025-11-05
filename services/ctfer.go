@@ -125,6 +125,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		Namespace:                 args.Namespace,
 		Registry:                  args.ImagesRepository,
 		PostgresOperatorNamespace: args.PostgresOperatorNamespace,
+		StorageClassName:          args.StorageClassName,
 	}, opts...)
 	if err != nil {
 		return
