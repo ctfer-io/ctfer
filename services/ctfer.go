@@ -34,7 +34,23 @@ type CTFer struct {
 type CTFerArgs struct {
 	Namespace pulumi.StringInput
 
-	CTFdImage       pulumi.StringInput
+	Platform *PlatformArgs
+	DB       *DBArgs
+	Cache    *CacheArgs
+
+	ChartsRepository pulumi.StringInput
+	ImagesRepository pulumi.StringInput
+
+	IngressNamespace pulumi.StringInput
+	IngressLabels    pulumi.StringMapInput
+
+	OTel *common.OTelArgs
+}
+
+// PlatformArgs is the encapsulation of platform-specific arguments.
+// Current choice is CTFd.
+type PlatformArgs struct {
+	Image           pulumi.StringInput
 	ChallManagerURL pulumi.StringInput
 
 	Crt         pulumi.StringInput
@@ -45,21 +61,26 @@ type CTFerArgs struct {
 	Requests    pulumi.StringMapInput
 	Limits      pulumi.StringMapInput
 
-	Hostname         pulumi.StringInput
-	ChartsRepository pulumi.StringInput
-	ImagesRepository pulumi.StringInput
 	StorageClassName pulumi.StringInput
 
 	// PVCAccessModes defines the access modes supported by the PVC.
 	PVCAccessModes pulumi.StringArrayInput
 
-	IngressNamespace          pulumi.StringInput
-	IngressLabels             pulumi.StringMapInput
-	PostgresOperatorNamespace pulumi.StringInput
-	Annotations               pulumi.StringMapInput
-
-	OTel *common.OTelArgs
+	Hostname           pulumi.StringInput
+	IngressAnnotations pulumi.StringMapInput
 }
+
+// DBArgs is the encapsulation of platform-specific arguments.
+// Current choice is PostgreSQL with CNPG.
+type DBArgs struct {
+	StorageClassName pulumi.StringInput
+
+	OperatorNamespace pulumi.StringInput
+}
+
+// CacheArgs is the encapsulation of platform-specific arguments.
+// Current choice is Redis.
+type CacheArgs struct{}
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
 func NewCTFer(ctx *pulumi.Context, name string, args *CTFerArgs, opts ...pulumi.ResourceOption) (*CTFer, error) {
@@ -124,8 +145,8 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 	ctfer.postgres, err = components.NewPostgreSQL(ctx, "database", &components.PostgreSQLArgs{
 		Namespace:                 args.Namespace,
 		Registry:                  args.ImagesRepository,
-		PostgresOperatorNamespace: args.PostgresOperatorNamespace,
-		StorageClassName:          args.StorageClassName,
+		PostgresOperatorNamespace: args.DB.OperatorNamespace,
+		StorageClassName:          args.DB.StorageClassName,
 	}, opts...)
 	if err != nil {
 		return
@@ -149,23 +170,23 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 
 		RedisURL:        ctfer.redis.URL,
 		DatabaseURL:     ctfer.postgres.URL,
-		ChallManagerURL: args.ChallManagerURL,
+		ChallManagerURL: args.Platform.ChallManagerURL,
 
-		Image:    args.CTFdImage,
+		Image:    args.Platform.Image,
 		Registry: args.ImagesRepository,
-		Workers:  args.Workers,
-		Replicas: args.Replicas,
-		Limits:   args.Limits,
-		Requests: args.Requests,
+		Workers:  args.Platform.Workers,
+		Replicas: args.Platform.Replicas,
+		Limits:   args.Platform.Limits,
+		Requests: args.Platform.Requests,
 
-		StorageSize:      args.StorageSize,
-		StorageClassName: args.StorageClassName,
-		PVCAccessModes:   args.PVCAccessModes,
+		StorageSize:      args.Platform.StorageSize,
+		StorageClassName: args.Platform.StorageClassName,
+		PVCAccessModes:   args.Platform.PVCAccessModes,
 
-		Crt:         args.Crt,
-		Key:         args.Key,
-		Hostname:    args.Hostname,
-		Annotations: args.Annotations,
+		Crt:         args.Platform.Crt,
+		Key:         args.Platform.Key,
+		Hostname:    args.Platform.Hostname,
+		Annotations: args.Platform.IngressAnnotations,
 	}
 	if args.OTel != nil {
 		ctfdArgs.OTel = &common.OTelArgs{

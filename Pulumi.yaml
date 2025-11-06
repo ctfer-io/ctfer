@@ -1,79 +1,96 @@
 name: ctfer
 runtime: go
-description: High-Availability and Secure CTF deployment tool over Kubernetes 
+description: "High-Availability and Secure CTF deployment tool over Kubernetes."
 config:
+  # region root-level
   namespace:
     type: string
-    description: The namespace where ctfer stack will be installed
-    default: ctfer
-  hostname:
-    type: string
-    description: The URL to use for CTFd
-    default: localhost
+    description: "The namespace where ctfer stack will be installed."
+    default: "ctfer"
   images-repository:
     type: string
-    description: Custom registry to use for Docker images
+    description: "Custom registry to use for Docker images."
     default: ""
   charts-repository:
     type: string
-    description: Custom registry to use for Helm charts (oci://)
+    description: "Custom registry to use for Helm charts (oci://)."
     default: ""
-  storage-class-name:
-    type: string
-    description: 'The StorageClassName for the PersistenVolumeClaim.'
-    default: ''
-  pvc-access-mode:
-    type: string
-    description: 'The AccessMode for the PersistenVolumeClaim.'
-    default: 'ReadWriteOnce'
-  ingress-namespace:
-    type: string
-    description: "The namespace where the ingress-controller is installed"
-    default: "default"
-  postgres-operator-namespace:
-    type: string
-    description: "The namespace where the postgres-operator is installed"
-    default: "default"
-
-## CTFd Configuration
-  ctfd-image:
-    type: string
-    description: CTFd image to use
-    default: ctferio/ctfd:latest
   chall-manager-url:
     type: string
-    description: Chall-Manager API URL to use
-  crt:
+    description: "Chall-Manager API URL to use."
+  ingress-namespace:
     type: string
-    description: X509 .crt
-  key:
+    description: "The namespace where the ingress-controller is installed."
+    default: "default"
+
+  # region platform
+  platform.image:
     type: string
-    description: x509 .key content for https
-  storage-size:
+    description: "CTFd image to use."
+    default: "ctferio/ctfd:latest"
+  platform.hostname:
     type: string
-    description: Size of the PVC
-    default: "2Gi"
-  replicas:
+    description: "The URL to use for CTFd."
+    default: "localhost"
+  platform.crt:
+    type: string
+    description: "X509 .crt content for HTTPS."
+  platform.key:
+    type: string
+    description: "x509 .key content for HTTPS."
+  platform.workers:
     type: integer
-    description: Number of replicas of the StatefulSet
+    description: "Number of worker inside container."
     default: 1
-  workers:
+  platform.replicas:
     type: integer
-    description: Number of worker inside container
+    description: "Number of replicas of the StatefulSet."
     default: 1
-  requests.cpu:
+  platform.requests.cpu:
     type: string
-    description: The number of CPUs to use.
+    description: "The number of CPUs to use."
     default: "2.0"
-  requests.memory:
+  platform.requests.memory:
     type: string
-    description : The memory size to use.
+    description : "The memory size to use."
     default: "1Gi"
-  limits.cpu:
+  platform.limits.cpu:
     type: string
-    description: The maximum number of CPUs to use.
+    description: "The maximum number of CPUs to use."
     default: "4.0"
-  limits.memory:
+  platform.limits.memory:
     type: string
-    description: The maximum memory size to use.
+    description: "The maximum memory size to use."
     default: "2Gi"
+  platform.storage-size:
+    type: string
+    description: "Size of the PVC."
+    default: "2Gi"
+  platform.storage-class-name:
+    type: string
+    description: "The StorageClassName for the PersistenVolumeClaim."
+    default: ""
+  platform.pvc-access-modes:
+    type: string
+    description: "The AccessMode for the PersistenVolumeClaim."
+    default: "ReadWriteOnce"
+
+  # region db
+  db.storage-class-name:
+    type: string
+    description: "The StorageClassName for the PersistenVolumeClaim."
+    default: ""
+  db.operator-namespace:
+    type: string
+    description: "The DB operator namespace."
+    default: ""
+
+  # region otel
+  otel.endpoint:
+    type: string
+    description: "The OpenTelemetry Collector endpoint to set signals to."
+    default: ""
+  otel.insecure:
+    type: boolean
+    description: "If set to true, send signals to the OpenTelemetry Collector in plain text."
+    default: false
