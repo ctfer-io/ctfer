@@ -94,3 +94,7 @@ config:
     type: boolean
     description: "If set to true, send signals to the OpenTelemetry Collector in plain text."
     default: false
+
+author: CTFer.io
+license: Apache-2.0
+website: https://ctfer.io
