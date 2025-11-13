@@ -80,26 +80,31 @@ func main() {
 		}
 
 		ctferArgs := &services.CTFerArgs{
-			Namespace:        pulumi.String(cfg.Namespace),
-			CTFdImage:        pulumi.String(cfg.CTFdImage),
-			Hostname:         pulumi.String(cfg.Hostname),
-			StorageClassName: pulumi.String(cfg.StorageClassName),
-			PVCAccessModes: pulumi.ToStringArray([]string{
-				cfg.PVCAccessMode,
-			}),
-			Crt:                       cfg.Crt,
-			Key:                       cfg.Key,
-			StorageSize:               pulumi.String(cfg.StorageSize),
-			Workers:                   pulumi.Int(cfg.Workers),
-			Replicas:                  pulumi.Int(cfg.Replicas),
-			ChartsRepository:          pulumi.String(cfg.ChartsRepository),
-			ImagesRepository:          pulumi.String(cfg.ImagesRepository),
-			ChallManagerURL:           pulumi.String(cfg.ChallManagerUrl),
-			Requests:                  pulumi.ToStringMap(cfg.Requests),
-			Limits:                    pulumi.ToStringMap(cfg.Limits),
-			IngressNamespace:          pulumi.String(cfg.IngressNamespace),
-			IngressLabels:             pulumi.ToStringMap(cfg.IngressLabels),
-			PostgresOperatorNamespace: pulumi.String(cfg.PostgresOperatorNamespace),
+			Namespace: pulumi.String(cfg.Namespace),
+			Platform: &services.PlatformArgs{
+				Image:              pulumi.String(cfg.Platform.Image),
+				ChallManagerURL:    pulumi.String(cfg.ChallManagerUrl),
+				Hostname:           pulumi.String(cfg.Platform.Hostname),
+				Crt:                pulumi.String(cfg.Platform.Crt),
+				Key:                pulumi.String(cfg.Platform.Key),
+				Workers:            pulumi.Int(cfg.Platform.Workers),
+				Replicas:           pulumi.Int(cfg.Platform.Replicas),
+				Requests:           pulumi.ToStringMap(cfg.Platform.Requests),
+				Limits:             pulumi.ToStringMap(cfg.Platform.Limits),
+				StorageSize:        pulumi.String(cfg.Platform.StorageSize),
+				StorageClassName:   pulumi.String(cfg.Platform.StorageClassName),
+				PVCAccessModes:     pulumi.ToStringArray(cfg.Platform.PVCAccessModes),
+				IngressAnnotations: pulumi.ToStringMap(cfg.Platform.IngressAnnotations),
+			},
+			DB: &services.DBArgs{
+				StorageClassName:  pulumi.String(cfg.DB.StorageClassName),
+				OperatorNamespace: pulumi.String(cfg.DB.OperatorNamespace),
+			},
+			Cache:            &services.CacheArgs{},
+			ChartsRepository: pulumi.String(cfg.ChartsRepository),
+			ImagesRepository: pulumi.String(cfg.ImagesRepository),
+			IngressNamespace: pulumi.String(cfg.IngressNamespace),
+			IngressLabels:    pulumi.ToStringMap(cfg.IngressLabels),
 		}
 		if cfg.Otel != nil {
 			ctferArgs.OTel = &common.OTelArgs{
@@ -121,27 +126,38 @@ func main() {
 type (
 	// Config holds the values configured using pulumi CLI.
 	Config struct {
-		// Namespace in which ctfer will deploy the CTF.
-		Namespace                 string
-		Hostname                  string
-		ImagesRepository          string
-		ChartsRepository          string
-		StorageClassName          string
-		PVCAccessMode             string
-		CTFdImage                 string
-		ChallManagerUrl           string
-		StorageSize               string
-		Crt                       pulumi.StringInput
-		Key                       pulumi.StringInput
-		Replicas                  int
-		Workers                   int
-		Requests                  map[string]string
-		Limits                    map[string]string
-		IngressNamespace          string
-		PostgresOperatorNamespace string
-		IngressLabels             map[string]string
 
-		Otel *OtelConfig
+		// Namespace in which ctfer will deploy the CTF.
+		Namespace        string
+		ImagesRepository string
+		ChartsRepository string
+		ChallManagerUrl  string
+		IngressNamespace string
+		IngressLabels    map[string]string
+
+		Platform *PlatformConfig
+		DB       *DBConfig
+		Otel     *OtelConfig
+	}
+
+	PlatformConfig struct {
+		Image              string            `json:"image"`
+		Hostname           string            `json:"hostname"`
+		Crt                string            `json:"crt"`
+		Key                string            `json:"key"`
+		Workers            int               `json:"workers"`
+		Replicas           int               `json:"replicas"`
+		Requests           map[string]string `json:"requests"`
+		Limits             map[string]string `json:"limits"`
+		StorageSize        string            `json:"storage-size"`
+		StorageClassName   string            `json:"storage-class-name"`
+		PVCAccessModes     []string          `json:"pvc-access-modes"`
+		IngressAnnotations map[string]string `json:"ingress-annotations"`
+	}
+
+	DBConfig struct {
+		StorageClassName  string `json:"storage-class-name"`
+		OperatorNamespace string `json:"operator-namespace"`
 	}
 
 	OtelConfig struct {
@@ -153,31 +169,24 @@ type (
 func loadConfig(ctx *pulumi.Context) (*Config, error) {
 	cfg := config.New(ctx, "")
 	c := &Config{
-		Namespace:                 cfg.Get("namespace"),
-		Hostname:                  cfg.Get("hostname"),
-		ImagesRepository:          cfg.Get("images-repository"),
-		ChartsRepository:          cfg.Get("charts-repository"),
-		StorageClassName:          cfg.Get("storage-class-name"),
-		PVCAccessMode:             cfg.Get("pvc-access-mode"),
-		CTFdImage:                 cfg.Get("ctfd-image"),
-		ChallManagerUrl:           cfg.Get("chall-manager-url"),
-		Crt:                       cfg.GetSecret("crt"),
-		Key:                       cfg.GetSecret("key"),
-		StorageSize:               cfg.Get("storage-size"),
-		Replicas:                  cfg.GetInt("replicas"),
-		Workers:                   cfg.GetInt("workers"),
-		IngressNamespace:          cfg.Get("ingress-namespace"),
-		PostgresOperatorNamespace: cfg.Get("postgres-operator-namespace"),
-	}
-	if err := cfg.TryObject("requests", &c.Requests); err != nil {
-		return nil, err
-	}
-
-	if err := cfg.TryObject("limits", &c.Limits); err != nil {
-		return nil, err
+		Namespace:        cfg.Get("namespace"),
+		ImagesRepository: cfg.Get("images-repository"),
+		ChartsRepository: cfg.Get("charts-repository"),
+		ChallManagerUrl:  cfg.Get("chall-manager-url"),
+		IngressNamespace: cfg.Get("ingress-namespace"),
+		Platform:         &PlatformConfig{},
+		DB:               &DBConfig{},
 	}
 
 	if err := cfg.TryObject("ingress-labels", &c.IngressLabels); err != nil {
+		return nil, err
+	}
+
+	if err := cfg.TryObject("platform", c.Platform); err != nil {
+		return nil, err
+	}
+
+	if err := cfg.TryObject("db", c.DB); err != nil {
 		return nil, err
 	}
 
