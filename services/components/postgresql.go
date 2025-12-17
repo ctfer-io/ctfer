@@ -38,9 +38,9 @@ type PostgreSQL struct {
 	URL       pulumi.StringOutput
 	PodLabels pulumi.StringMapOutput
 
-	commonLabels    pulumi.StringMapInput
-	poolerPodLabels pulumi.StringMapInput
-	pgPodLabels     pulumi.StringMapInput
+	commonLabels    pulumi.StringMapOutput
+	poolerPodLabels pulumi.StringMapOutput
+	pgPodLabels     pulumi.StringMapOutput
 }
 
 type PostgreSQLArgs struct {
@@ -199,25 +199,32 @@ func (psql *PostgreSQL) check(args *PostgreSQLArgs) error {
 func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opts ...pulumi.ResourceOption) (err error) {
 
 	psql.clusterName = pulumi.Sprintf("%s-%s", args.clusterNamePrefix, ctx.Stack())
-	psql.commonLabels = pulumi.StringMap{
-		"app.kubernetes.io/component": pulumi.String("database"),
-		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-	}
 
-	psql.poolerPodLabels = pulumi.StringMap{
-		"app.kubernetes.io/name":      pulumi.String("pgbouncer"),
-		"app.kubernetes.io/component": pulumi.String("database"),
-		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-	}
+	psql.commonLabels = pulumi.ToStringMap(map[string]string{
+		"app.kubernetes.io/part-of": "ctfer",
+		"ctfer.io/stack-name":       ctx.Stack(),
+	}).ToStringMapOutput()
 
-	psql.pgPodLabels = pulumi.StringMap{
-		"app.kubernetes.io/name":      pulumi.String("postgresql"),
-		"app.kubernetes.io/component": pulumi.String("database"),
-		"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
-		"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
-	}
+	// CNPG manages a set of labels, including app.kubernetes.io/component and app.kubernetes.io/name for its
+	// resources (including the Pooler and Cluster).
+	// The minimal set of shared labels are used to parallel deployability while keeping network interactions
+	// tied to one Pulumi stack. For this reason, we have to stick with the common labels, thus not define the
+	// component and name we would want to give it...
+	// Here we define what CNPG is going to set, to ensure proper network policies.
+	psql.poolerPodLabels = pulumi.ToStringMap(map[string]string{
+		"app.kubernetes.io/component": "pooler",     // DO NOT CHANGE
+		"app.kubernetes.io/name":      "postgresql", // DO NOT CHANGE
+		"app.kubernetes.io/part-of":   "ctfer",
+		"ctfer.io/stack-name":         ctx.Stack(),
+	}).ToStringMapOutput()
+
+	// In the case of PostgreSQL pods, we can define them ! :D
+	psql.pgPodLabels = pulumi.ToStringMap(map[string]string{
+		"app.kubernetes.io/component": "database",
+		"app.kubernetes.io/name":      "postgresql",
+		"app.kubernetes.io/part-of":   "ctfer",
+		"ctfer.io/stack-name":         ctx.Stack(),
+	}).ToStringMapOutput()
 
 	// postgreSQL to kube-apiserver
 	psql.pgToApi, err = yamlv2.NewConfigGroup(ctx, "kube-apiserver-netpol", &yamlv2.ConfigGroupArgs{
@@ -492,7 +499,15 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 		return err
 	}
 
-	opts = append(opts, pulumi.DependsOn([]pulumi.Resource{psql.userSec, psql.pgToApi, psql.poolerFromClient, psql.poolerToPg, psql.pgFromPooler, psql.pgReplication, psql.pgFromOperator}))
+	opts = append(opts, pulumi.DependsOn([]pulumi.Resource{
+		psql.userSec,
+		psql.pgToApi,
+		psql.poolerFromClient,
+		psql.poolerToPg,
+		psql.pgFromPooler,
+		psql.pgReplication,
+		psql.pgFromOperator,
+	}))
 
 	// Create cluster with postgres-operator
 	psql.cluster, err = yamlv2.NewConfigGroup(ctx, "database-cluster", &yamlv2.ConfigGroupArgs{
@@ -543,7 +558,6 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 	}
 
 	// pooler explicit deps with cluster
-	opts = append(opts, pulumi.DependsOn([]pulumi.Resource{psql.cluster}))
 	psql.pooler, err = yamlv2.NewConfigGroup(ctx, "database-pooler", &yamlv2.ConfigGroupArgs{
 		Objs: pulumi.Array{
 			// Pooler
@@ -584,7 +598,9 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 				},
 			},
 		},
-	}, opts...)
+	}, append(opts, pulumi.DependsOn([]pulumi.Resource{
+		psql.cluster,
+	}))...)
 	if err != nil {
 		return err
 	}
@@ -594,7 +610,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 
 func (psql *PostgreSQL) outputs(ctx *pulumi.Context) error {
 	psql.URL = pulumi.Sprintf("postgresql+psycopg2://%s:%s@%s-pooler:5432/%s", psql.userName, psql.userPass.Result, psql.clusterName, psql.userName)
-	psql.PodLabels = psql.poolerPodLabels.ToStringMapOutput()
+	psql.PodLabels = psql.poolerPodLabels
 
 	return ctx.RegisterResourceOutputs(psql, pulumi.Map{
 		"url":       psql.URL,
