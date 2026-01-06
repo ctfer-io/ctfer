@@ -20,6 +20,8 @@ helm install postgres-operator postgres-operator-charts/postgres-operator --set 
 
 ```
 
+### Deploy
+
 If you want to use local images.
 
 ```bash
@@ -36,7 +38,7 @@ If you want to use custom images of ctfd (i.e with your plugin/themes).
 
 ```bash
 # Use custom images
-pulumi config set ctfd-image ctferio/ctfd:3.7.7-0.3.0
+pulumi config set --path platform.image ctferio/ctfd:3.8.1-0.9.0
 ```
 
 If you want to configure the ChallManager URL.
@@ -51,40 +53,43 @@ If you want to use a custom certificate.
 ```bash
 # export PULUMI_CONFIG_PASSPHRASE before
 # https://github.com/pulumi/pulumi/issues/6015
-cat /path/to/crt.pem | pulumi config set --secret crt
-cat /path/to/key.pem | pulumi config set --secret key
+cat /path/to/crt.pem | pulumi config set --secret --path platform.crt
+cat /path/to/key.pem | pulumi config set --secret --path platform.key
 ```
 
 If you want to have a larger filesystem for uploads on CTFd.
 
 ```bash
-pulumi config set storage-size 10Gi
+pulumi config set --path plateform.storage-size 10Gi
 ```
 
 If you want to configure several workers on CTFd.
 
 ```bash
-pulumi config set workers 3
-pulumi config set replicas 3
+pulumi config set --path platform.workers 3
+pulumi config set --path platform.replicas 3
 
 # You will need a ReadWriteMany compatible CSI (e.g longhorn) if the Pods is schedule on several nodes
-pulumi config set pvc-access-mode ReadWriteMany
+pulumi config set --path platform.pvc-access-modes[0] ReadWriteMany
+pulumi config set --path platform.storage-class longhorn
 ```
 
-If you want to configure larger resources than default.
+If you want to configure other resources than default.
 
 ```bash
-pulumi config set --path requests.cpu 1
-pulumi config set --path requests.memory 2Gi
+pulumi config set --path platform.requests.cpu 1
+pulumi config set --path platform.requests.memory 2Gi
 
-pulumi config set --path limits.cpu 1
-pulumi config set --path limits.memory 1Gi
+pulumi config set --path platform.limits.cpu 1
+pulumi config set --path platform.limits.memory 1Gi
 ```
 
 Deploy CTFer.
 
 ```bash
-pulumi config set hostname ctfd.dev1.ctfer-io.lab
+pulumi config set --path platform.hostname ctfd.dev1.ctfer-io.lab
+pulumi config set --path ingress-labels.name traefik
+pulumi config set --path db.operator-namespace cnpg-system
 pulumi up 
 ```
 
