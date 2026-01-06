@@ -23,7 +23,7 @@ type CTFd struct {
 	sec     *corev1.Secret
 	tlssec  *corev1.Secret
 	pvc     *corev1.PersistentVolumeClaim
-	sts     *appsv1.StatefulSet
+	dep     *appsv1.Deployment
 	svc     *corev1.Service
 	ing     *netwv1.Ingress
 
@@ -313,7 +313,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		"redis-client":                pulumi.String("true"), // netpol podSelector
 		"postgresql-client":           pulumi.String("true"), // netpol podSelector
 	}.ToStringMapOutput()
-	ctfd.sts, err = appsv1.NewStatefulSet(ctx, "ctfd-sts", &appsv1.StatefulSetArgs{
+	ctfd.dep, err = appsv1.NewDeployment(ctx, "ctfd-dep", &appsv1.DeploymentArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Namespace: args.Namespace,
 			Labels: pulumi.StringMap{
@@ -323,7 +323,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
 		},
-		Spec: appsv1.StatefulSetSpecArgs{
+		Spec: appsv1.DeploymentSpecArgs{
 			Selector: metav1.LabelSelectorArgs{
 				MatchLabels: ctfd.PodLabels,
 			},
