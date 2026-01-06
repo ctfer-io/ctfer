@@ -206,7 +206,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 	// Top-level NetworkPolicies
 	// - IngressController -> CTFd
 	// - CTFd -> Redis
-	// - CTFd -> MariaDB
+	// - CTFd -> DB
 	ctfer.ctfdNetpol, err = netwv1.NewNetworkPolicy(ctx, "ctfd-netpol", &netwv1.NetworkPolicyArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Namespace: args.Namespace,
