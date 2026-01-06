@@ -71,9 +71,12 @@ config:
     description: "The StorageClassName for the PersistenVolumeClaim."
     default: ""
   platform.pvc-access-modes:
-    type: string
+    type: array
     description: "The AccessMode for the PersistenVolumeClaim."
-    default: "ReadWriteOnce"
+    items:
+      type: string
+    default:
+      - "ReadWriteOnce"
 
   # region db
   db.storage-class-name:
