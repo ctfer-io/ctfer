@@ -7,7 +7,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/pkg/errors v0.9.1
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.25.0
-	github.com/pulumi/pulumi-random/sdk/v4 v4.19.0
+	github.com/pulumi/pulumi-random/sdk/v4 v4.19.1
 	github.com/pulumi/pulumi/sdk/v3 v3.218.0
 	go.uber.org/multierr v1.11.0
 )
