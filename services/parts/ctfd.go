@@ -2,6 +2,7 @@ package parts
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/ctfer-io/ctfer/services/common"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
@@ -67,8 +68,10 @@ type CTFdArgs struct {
 
 	// Exposure settings
 
-	Crt      pulumi.StringInput
-	Key      pulumi.StringInput
+	Crt     pulumi.StringInput
+	Key     pulumi.StringInput
+	withTLS bool
+
 	Hostname pulumi.StringInput
 
 	Annotations pulumi.StringMapInput
@@ -153,6 +156,21 @@ func (ctfd *CTFd) defaults(args *CTFdArgs) *CTFdArgs {
 	args.annotations = pulumi.StringMap{}.ToStringMapOutput()
 	if args.Annotations != nil {
 		args.annotations = args.Annotations.ToStringMapOutput()
+	}
+
+	// Check if will need TLS on ingress
+	args.withTLS = args.Crt != nil && args.Key != nil
+	if args.withTLS {
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+		pulumi.All(args.Crt, args.Key).ApplyT(func(all []any) error {
+			crt := all[0].(string)
+			key := all[1].(string)
+			args.withTLS = crt != "" && key != ""
+			wg.Done()
+			return nil
+		})
+		wg.Wait()
 	}
 
 	return args
@@ -410,7 +428,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 	// FIXME the secret still be created even if the pulumi config does not exists
 	// The secret is not valid so the default traefik cert will be used
 	tlsOps := netwv1.IngressTLSArray{}
-	if args.Crt != nil && args.Key != nil {
+	if args.withTLS {
 		ctfd.tlssec, err = corev1.NewSecret(ctx, "ctfd-secret-tls", &corev1.SecretArgs{
 			Metadata: metav1.ObjectMetaArgs{
 				Namespace: args.Namespace,
@@ -433,7 +451,8 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		tlsOps = append(tlsOps,
 			netwv1.IngressTLSArgs{
 				SecretName: ctfd.tlssec.Metadata.Name(),
-			})
+			},
+		)
 	}
 
 	ctfd.ing, err = netwv1.NewIngress(ctx, "ctfd-ingress", &netwv1.IngressArgs{
@@ -457,11 +476,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 								PathType: pulumi.String("Prefix"),
 								Backend: netwv1.IngressBackendArgs{
 									Service: netwv1.IngressServiceBackendArgs{
-										// Name: pulumi.String("ctfd-keda-svc"),
 										Name: ctfd.svc.Metadata.Name().Elem(),
 										Port: netwv1.ServiceBackendPortArgs{
 											Name: pulumi.String("web"),
-											// Number: pulumi.Int(8080),
 										},
 									},
 								},

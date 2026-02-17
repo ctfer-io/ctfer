@@ -18,6 +18,7 @@ config:
   chall-manager-url:
     type: string
     description: "Chall-Manager API URL to use."
+    default: ""
   ingress-namespace:
     type: string
     description: "The namespace where the ingress-controller is installed."
@@ -35,9 +36,11 @@ config:
   platform.crt:
     type: string
     description: "X509 .crt content for HTTPS."
+    default: ""
   platform.key:
     type: string
     description: "x509 .key content for HTTPS."
+    default: ""
   platform.workers:
     type: integer
     description: "Number of worker inside container."
