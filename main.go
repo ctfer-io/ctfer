@@ -180,9 +180,8 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 		DB:               &DBConfig{},
 	}
 
-	if err := cfg.TryObject("ingress-labels", &c.IngressLabels); err != nil {
-		return nil, err
-	}
+	// As we cannot default this one, we silently drop the error is not are set
+	_ = cfg.TryObject("ingress-labels", &c.IngressLabels)
 
 	if err := cfg.TryObject("platform", c.Platform); err != nil {
 		return nil, err
