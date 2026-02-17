@@ -12,7 +12,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	"github.com/ctfer-io/ctfer/services/common"
-	"github.com/ctfer-io/ctfer/services/components"
+	"github.com/ctfer-io/ctfer/services/parts"
 )
 
 // CTFer is a pulumi Component that deploy a pre-configured CTFd stack
@@ -20,9 +20,9 @@ import (
 type CTFer struct {
 	pulumi.ResourceState
 
-	postgres *components.PostgreSQL
-	redis    *components.Redis
-	ctfd     *components.CTFd
+	postgres *parts.PostgreSQL
+	redis    *parts.Redis
+	ctfd     *parts.CTFd
 
 	ctfdNetpol *netwv1.NetworkPolicy
 
@@ -142,7 +142,7 @@ func (ctfer *CTFer) check(args *CTFerArgs) error {
 
 func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulumi.ResourceOption) (err error) {
 	// Deploy HA Dababase with PostgreSQL Operator
-	ctfer.postgres, err = components.NewPostgreSQL(ctx, "database", &components.PostgreSQLArgs{
+	ctfer.postgres, err = parts.NewPostgreSQL(ctx, "database", &parts.PostgreSQLArgs{
 		Namespace:                 args.Namespace,
 		Registry:                  args.ImagesRepository,
 		PostgresOperatorNamespace: args.DB.OperatorNamespace,
@@ -155,7 +155,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 	// Deploy Redis
 	// TODO scale up to >=3
 	// FIXME when scaled to 3, ctfd replicas errors
-	ctfer.redis, err = components.NewRedis(ctx, "cache", &components.RedisArgs{
+	ctfer.redis, err = parts.NewRedis(ctx, "cache", &parts.RedisArgs{
 		Namespace:        args.Namespace,
 		ChartsRepository: args.ChartsRepository,
 		ChartVersion:     pulumi.String("20.13.4"),
@@ -165,7 +165,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		return
 	}
 
-	ctfdArgs := &components.CTFdArgs{
+	ctfdArgs := &parts.CTFdArgs{
 		Namespace: args.Namespace,
 
 		RedisURL:        ctfer.redis.URL,
@@ -195,7 +195,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 			Insecure:    args.OTel.Insecure,
 		}
 	}
-	ctfer.ctfd, err = components.NewCTFd(ctx, "platform", ctfdArgs, append(opts, pulumi.DependsOn([]pulumi.Resource{
+	ctfer.ctfd, err = parts.NewCTFd(ctx, "platform", ctfdArgs, append(opts, pulumi.DependsOn([]pulumi.Resource{
 		ctfer.postgres,
 		ctfer.redis,
 	}))...)

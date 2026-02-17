@@ -18,11 +18,12 @@ func main() {
 		}
 
 		// Create CTF's namespace
-		ns, err := corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
+		ns, err := corev1.NewNamespace(ctx, "ctf-ns", &corev1.NamespaceArgs{
 			Metadata: metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
-					"ctfer.io/app-name": pulumi.String("ctfd"),
-					"ctfer.io/part-of":  pulumi.String("ctfer"),
+					"app.kubernetes.io/component": pulumi.String("ctfer"),
+					"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+					"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 				},
 				Name: pulumi.String(cfg.Namespace),
 			},
@@ -32,12 +33,13 @@ func main() {
 		}
 
 		// Grant DNS resolution
-		_, err = netwv1.NewNetworkPolicy(ctx, "dns", &netwv1.NetworkPolicyArgs{
+		_, err = netwv1.NewNetworkPolicy(ctx, "grant-dns", &netwv1.NetworkPolicyArgs{
 			Metadata: metav1.ObjectMetaArgs{
 				Namespace: ns.Metadata.Name().Elem(),
 				Labels: pulumi.StringMap{
-					"ctfer.io/app-name": pulumi.String("ctfd"),
-					"ctfer.io/part-of":  pulumi.String("ctfer"),
+					"app.kubernetes.io/component": pulumi.String("ctfer"),
+					"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+					"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 				},
 			},
 			Spec: netwv1.NetworkPolicySpecArgs{
@@ -106,11 +108,11 @@ func main() {
 			IngressNamespace: pulumi.String(cfg.IngressNamespace),
 			IngressLabels:    pulumi.ToStringMap(cfg.IngressLabels),
 		}
-		if cfg.Otel != nil {
+		if cfg.OTel != nil {
 			ctferArgs.OTel = &common.OTelArgs{
 				ServiceName: pulumi.String(ctx.Stack()),
-				Endpoint:    pulumi.String(cfg.Otel.Endpoint),
-				Insecure:    cfg.Otel.Insecure,
+				Endpoint:    pulumi.String(cfg.OTel.Endpoint),
+				Insecure:    cfg.OTel.Insecure,
 			}
 		}
 		ctfer, err := services.NewCTFer(ctx, ctx.Stack(), ctferArgs)
@@ -137,7 +139,7 @@ type (
 
 		Platform *PlatformConfig
 		DB       *DBConfig
-		Otel     *OtelConfig
+		OTel     *OTelConfig
 	}
 
 	PlatformConfig struct {
@@ -160,7 +162,7 @@ type (
 		OperatorNamespace string `json:"operator-namespace"`
 	}
 
-	OtelConfig struct {
+	OTelConfig struct {
 		Endpoint string `json:"endpoint"`
 		Insecure bool   `json:"insecure"`
 	}
@@ -190,9 +192,9 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 		return nil, err
 	}
 
-	var otelC OtelConfig
+	var otelC OTelConfig
 	if err := cfg.TryObject("otel", &otelC); err == nil && otelC.Endpoint != "" {
-		c.Otel = &otelC
+		c.OTel = &otelC
 	}
 
 	return c, nil
