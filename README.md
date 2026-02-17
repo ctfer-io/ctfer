@@ -1,24 +1,26 @@
-# CTFer
+<div align="center">
+  <h1>CTFer</h1>
+  <a href="https://pkg.go.dev/github.com/ctfer-io/ctfer"><img src="https://shields.io/badge/-reference-blue?logo=go&style=for-the-badge" alt="reference"></a>
+  <a href="https://goreportcard.com/report/github.com/ctfer-io/ctfer"><img src="https://goreportcard.com/badge/github.com/ctfer-io/ctfer?style=for-the-badge" alt="go report"></a>
+  <a href="https://coveralls.io/github/ctfer-io/ctfer?branch=main"><img src="https://img.shields.io/coverallsCoverage/github/ctfer-io/ctfer?style=for-the-badge" alt="Coverage Status"></a>
+  <br>
+  <a href=""><img src="https://img.shields.io/github/license/ctfer-io/ctfer?style=for-the-badge" alt="License"></a>
+  <a href="https://github.com/ctfer-io/ctfer/actions?query=workflow%3Aci+"><img src="https://img.shields.io/github/actions/workflow/status/ctfer-io/ctfer/ci.yaml?style=for-the-badge&label=CI" alt="CI"></a>
+  <a href="https://github.com/ctfer-io/ctfer/actions/workflows/codeql-analysis.yaml"><img src="https://img.shields.io/github/actions/workflow/status/ctfer-io/ctfer/codeql-analysis.yaml?style=for-the-badge&label=CodeQL" alt="CodeQL"></a>
+  <br>
+  <a href="https://securityscorecards.dev/viewer/?uri=github.com/ctfer-io/ctfer"><img src="https://img.shields.io/ossf-scorecard/github.com/ctfer-io/ctfer?label=openssf%20scorecard&style=for-the-badge" alt="OpenSSF Scoreboard"></a>
+</div>
 
-CTFer is High-Availability and secure CTF deployment tool over Kubernetes. 
+The _CTFer_ component is in charge of the production-ready deployment of a CTF platform (CTFd) along its cache (Redis), database (PostgreSQL) and support of OpenTelemetry.
+
+> [!CAUTION]
+>
+> This component is an **internal** work mostly used for development purposes.
+> It is used for production purposes too, i.e. on Capture The Flag events.
+>
+> Nonetheless, **we do not include it in the repositories we are actively maintaining**.
 
 ## How to use
-
-### Prerequisites
-
-- Kubernetes cluster up and running (you can use our solution for that https://github.com/ctfer-io/ctfer-l3) ;
-- Generate and store your certs in certs folder.
-- Install the PostgreSQL operator by Zalando https://github.com/zalando/postgres-operator
-
-```bash
-# Add helm repo
-helm repo add postgres-operator-charts https://opensource.zalando.com/postgres-operator/charts/postgres-operator
-helm repo update
-
-# Install the operator with inherited_labels
-helm install postgres-operator postgres-operator-charts/postgres-operator --set "configKubernetes.inherited_labels={app.kubernetes.io/component,app.kubernetes.io/part-of,ctfer.io/stack-name}" --create-namespace --namespace postgres-operator
-
-```
 
 ### Deploy
 
@@ -34,7 +36,7 @@ pulumi config set images-repository registry.dev1.ctfer-io.lab
 pulumi config set charts-repository oci://registry.dev1.ctfer-io.lab/hauler
 ```
 
-If you want to use custom images of ctfd (i.e with your plugin/themes).
+If you want to use custom images of ctfd (e.g., with your plugins or theme).
 
 ```bash
 # Use custom images
@@ -91,236 +93,4 @@ pulumi config set --path platform.hostname ctfd.dev1.ctfer-io.lab
 pulumi config set --path ingress-labels.name traefik
 pulumi config set --path db.operator-namespace cnpg-system
 pulumi up 
-```
-
-# KEDA
-
-Pour garder une trace pour plus tard...
-
-## Prérequis
-
-```bash
-helm repo add kedacore https://kedacore.github.io/charts
-
-# install keda + http-add-on
-helm install keda kedacore/keda --namespace keda --create-namespace
-helm install http-add-on kedacore/keda-add-ons-http -n keda
-```
-
-## Modifications à prévoir
-
-Modifier `internal/componentes/ctfer.go` :
-Créer un service `ExternalName` pour faire référence au proxy http de keda qui se situe dans un autre namespace.
-Modifier l'ingress pour faire référence à ce service plutôt que `ctfd-svc`.
-
-```go
-	// If KEDA is enabled
-	_, err = corev1.NewService(ctx, "ctfd-keda-svc", &corev1.ServiceArgs{
-		Metadata: metav1.ObjectMetaArgs{
-			Labels:    ctfdLabels,
-			Name:      pulumi.String("ctfd-keda-svc"),
-			Namespace: ns,
-		},
-		Spec: &corev1.ServiceSpecArgs{
-			ExternalName: pulumi.String("keda-add-ons-http-interceptor-proxy.keda.svc.cluster.local"),
-			Type:         pulumi.String("ExternalName"),
-			Ports: corev1.ServicePortArray{
-				corev1.ServicePortArgs{
-					TargetPort: pulumi.Int(8080),
-					Port:       pulumi.Int(8080),
-					Name:       pulumi.String("web"),
-				},
-			},
-		},
-	}, pulumi.Parent(ctfer))
-	if err != nil {
-		return pulumi.StringOutput{}, err
-	}
-```
-
-Modifier `internal/components/traefik.go` :
-Par défaut, traefik ne route pas les paquets vers un service en mode `ExternalName`. 
-Activer la feature dans le helm.
-
-```go
-// ...
-
-"providers": pulumi.Map{
-    "kubernetesCRD": pulumi.Map{
-        "enabled": pulumi.Bool(false),
-    },
-    "kubernetesIngress": pulumi.Map{
-        "allowCrossNamespace": pulumi.Bool(true), // challenge instances on demand
-        "allowExternalNameServices": pulumi.Bool(true), // If KEDA is enabled
-    },
-},
-// ...
-```
-
-Enfin, appliquer le manifest `hack/httpscaleobject.yaml`.
-
-# PostgreSQL DEBUG
-
-## Zalando
-
-```bash
-
-# create kind cluster without CNI
-kind create cluster --config hack/kind-config.yaml
-
-# install cilium 
-helm install cilium cilium/cilium --version 1.18.2 \
-	--namespace kube-system   \
-	--set ipam.mode=kubernetes \
-	--set hubble.relay.enabled=true \
-    --set hubble.ui.enabled=true
-
-# install postgresql operator
-helm install postgres-operator postgres-operator-charts/postgres-operator --set "configKubernetes.inherited_labels={app.kubernetes.io/component,app.kubernetes.io/part-of,ctfer.io/stack-name}" --create-namespace --namespace postgres-operator
-
-# mimic node failure
-kubectl cordon kind-worker
-# then delete the master node
-
-```
-
-## CNPG
-
-```bash
-
-# create kind cluster without CNI
-kind create cluster --config hack/kind-config.yaml
-
-# install cilium 
-helm install cilium cilium/cilium --version 1.18.2 \
-	--namespace kube-system   \
-	--set ipam.mode=kubernetes \
-	--set hubble.relay.enabled=true \
-    --set hubble.ui.enabled=true
-
-# Install cnpg operator
-helm repo add cnpg https://cloudnative-pg.github.io/charts
-helm upgrade --install cnpg \
-  --namespace cnpg-system \
-  --create-namespace \
-  cnpg/cloudnative-pg
-
-# mimic node failure
-kubectl cordon kind-worker
-# then delete the master node
-
-```
-
-## Storage
-
-To ensure data redundancy and availability, our setup initially relied on Longhorn to replicate Persistent Volume Claims (PVCs) across multiple nodes. However, this approach had a significant impact on storage usage.
-
-**Previous configuration:**
-- Each 1 GB of data on the primary database was replicated across 3 worker nodes via Longhorn.
-- Each database replica also stored the same 1 GB of data, which was again replicated across all 3 workers.
-- In total, 1 GB of useful data resulted in approximately 9 GB of actual storage consumption.
-
-This configuration provided strong resilience but was inefficient in terms of storage usage.
-
-**Current configuration:**
-- The `storageClass` for the database pods has been changed to `local-path`.
-- For each 1 GB of primary data, around 3 GB are now stored to maintain fault tolerance and support failover to a replica if the primary node becomes unavailable.
-
-This change greatly optimizes storage efficiency while preserving reliability and automatic failover capabilities.
-
-### Talos-Specific Configuration
-
-Ref: https://docs.siderolabs.com/kubernetes-guides/csi/local-storage#local-path-provisioner
-
-For the GreHack 2025 production environment, we are using **Talos**, which requires specific configuration for the `local-path-provisioner`.
-Our virtual machines are equipped with two disks : one dedicated to the OS and another for data. In this setup, `/dev/sdb` is used as the data disk.
-
-To allow the local-path-provisioner to write to a specific path, we first need to define a `UserVolumeConfig`:
-
-```yaml
-# uservolume.yml
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: local-path-provisioner
-provisioning:
-  diskSelector:
-    match: disk.dev_path == '/dev/sdb'
-  minSize: 20GB
-  maxSize: 50GB
-``` 
-
-This configuration creates a writable partition at /var/mnt/local-path-provisioner.
-
-```bash
-talosctl patch mc --patch @uservolume.yml
-```
-
-Next, we deploy the **local-path-provisioner** using **Kustomize**, which allows us to override the default storage path.
-```yaml
-# kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-- github.com/rancher/local-path-provisioner/deploy?ref=v0.0.32
-patches:
-- patch: |-
-    kind: ConfigMap
-    apiVersion: v1
-    metadata:
-      name: local-path-config
-      namespace: local-path-storage
-    data:
-      config.json: |-
-        {
-                "nodePathMap":[
-                {
-                        "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
-                        "paths":["/var/mnt/local-path-provisioner"]
-                }
-                ]
-        }
-- patch: |-
-    apiVersion: storage.k8s.io/v1
-    kind: StorageClass
-    metadata:
-      name: local-path
-
-- patch: |-
-    apiVersion: v1
-    kind: Namespace
-    metadata:
-      name: local-path-storage
-      labels:
-        pod-security.kubernetes.io/enforce: privileged
-
-```
-Finally, apply the Kustomize configuration:
-
-```bash
-mkdir local-path
-touch local-path/kustomize.yml # copy content here
-
-# apply
-kubectl apply -k local-path/
-```
-
-This setup ensures the local-path-provisioner correctly uses the Talos-managed data disk for persistent volumes, maintaining compatibility and data persistence across the cluster.
-
-# Kite Dashboard
-
-```bash
-# Install kube-prometheus-stack to see montoring
-# Add Prometheus community Helm repository
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
-
-# Install kube-prometheus-stack
-helm install prometheus prometheus-community/kube-prometheus-stack \
-  --namespace monitoring \
-  --create-namespace
-
-helm repo add kite https://zxh326.github.io/kite
-helm install kite kite/kite -n kube-system
-
-
 ```
