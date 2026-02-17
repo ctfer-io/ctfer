@@ -19,6 +19,12 @@ func Test_S_Smoke(t *testing.T) {
 		SkipRefresh: true,
 		Dir:         path.Join(pwd, ".."),
 		StackName:   stackName(t.Name()),
+		Config: map[string]string{
+			// don't actually need them to boot up, they ensure no major configuration issue
+			"chall-manager-url": "",
+			"platform.crt":      "",
+			"platform.key":      "",
+		},
 	})
 }
 
