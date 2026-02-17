@@ -67,6 +67,14 @@ jobs:
             --set image.pullPolicy=IfNotPresent \
             --set ipam.mode=kubernetes
 
+      - name: Setup CNPG
+        run: |
+          helm repo add cnpg https://cloudnative-pg.github.io/charts
+          helm upgrade --install cnpg \
+            --namespace cnpg-system \
+            --create-namespace \
+            cnpg/cloudnative-pg
+
       - name: Install Pulumi
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
       - name: Prepare environment
