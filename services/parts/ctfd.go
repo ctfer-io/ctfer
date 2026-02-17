@@ -2,10 +2,8 @@ package parts
 
 import (
 	"strings"
-	"sync"
 
 	"github.com/ctfer-io/ctfer/services/common"
-	"github.com/hashicorp/go-multierror"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -85,9 +83,7 @@ const (
 func NewCTFd(ctx *pulumi.Context, name string, args *CTFdArgs, opts ...pulumi.ResourceOption) (*CTFd, error) {
 	ctfd := &CTFd{}
 	args = ctfd.defaults(args)
-	if err := ctfd.check(args); err != nil {
-		return nil, err
-	}
+
 	err := ctx.RegisterComponentResource("ctfer-io:ctfer:ctfd", name, ctfd, opts...)
 	if err != nil {
 		return nil, err
@@ -160,33 +156,6 @@ func (ctfd *CTFd) defaults(args *CTFdArgs) *CTFdArgs {
 	}
 
 	return args
-}
-
-func (ctfd *CTFd) check(args *CTFdArgs) error {
-	checks := 0
-	wg := &sync.WaitGroup{}
-	wg.Add(checks)
-	cerr := make(chan error, checks)
-
-	// TODO perform validation checks
-	// smth.ApplyT(func(abc def) ghi {
-	//     defer wg.Done()
-	//
-	//     ... the actual test
-	//     if err != nil {
-	//         cerr <- err
-	//         return
-	//     }
-	// })
-
-	wg.Wait()
-	close(cerr)
-
-	var merr error
-	for err := range cerr {
-		merr = multierror.Append(merr, err)
-	}
-	return merr
 }
 
 func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.ResourceOption) (err error) {

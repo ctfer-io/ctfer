@@ -13,6 +13,14 @@ linters:
     - staticcheck
     - unconvert
     - unused
+  settings:
+    revive:
+      rules:
+        - name: var-naming
+          arguments:
+            - []
+            - []
+            - - skipPackageNameChecks: true
   exclusions:
     generated: lax
     presets:

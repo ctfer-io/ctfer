@@ -28,7 +28,7 @@ type PostgreSQL struct {
 	clusterName pulumi.StringInput
 
 	// Netpols
-	pgToApi          *yamlv2.ConfigGroup
+	pgToAPI          *yamlv2.ConfigGroup
 	poolerFromClient *netwv1.NetworkPolicy
 	poolerToPg       *netwv1.NetworkPolicy
 	pgFromPooler     *netwv1.NetworkPolicy
@@ -48,11 +48,11 @@ type PostgreSQLArgs struct {
 
 	Registry pulumi.StringPtrInput
 
-	// PgToApiServerTemplate is a Go text/template that defines the NetworkPolicy
+	// PgToAPIServerTemplate is a Go text/template that defines the NetworkPolicy
 	// YAML schema to use.
 	// If none set, it is defaulted to a cilium.io/v2 CiliumNetworkPolicy.
-	PgToApiServerTemplate pulumi.StringPtrInput
-	pgToApiServerTemplate pulumi.StringOutput
+	PgToAPIServerTemplate pulumi.StringPtrInput
+	pgToAPIServerTemplate pulumi.StringOutput
 
 	ClusterNamePrefix pulumi.StringPtrInput
 	clusterNamePrefix pulumi.StringOutput
@@ -70,7 +70,7 @@ type PostgreSQLArgs struct {
 const (
 	defaultClusterNamePrefix         = "ctfer-database"
 	defaultPostgresOperatorNamespace = "default"
-	defaultPgToApiServerTemplate     = `
+	defaultPgToAPIServerTemplate     = `
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -94,7 +94,13 @@ spec:
 
 // NewPostgreSQL creates a HA PostgreSQL cluster.
 // The https://github.com/zalando/postgres-operator with CRDs need to be installed on the cluster before.
-func NewPostgreSQL(ctx *pulumi.Context, name string, args *PostgreSQLArgs, opts ...pulumi.ResourceOption) (*PostgreSQL, error) {
+func NewPostgreSQL(
+	ctx *pulumi.Context,
+	name string,
+	args *PostgreSQLArgs,
+	opts ...pulumi.ResourceOption,
+) (*PostgreSQL, error) {
+
 	psql := &PostgreSQL{}
 	args = psql.defaults(args)
 	if err := psql.check(args); err != nil {
@@ -133,14 +139,15 @@ func (psql *PostgreSQL) defaults(args *PostgreSQLArgs) *PostgreSQLArgs {
 		}).(pulumi.StringOutput)
 	}
 
-	args.pgToApiServerTemplate = pulumi.String(defaultPgToApiServerTemplate).ToStringOutput()
-	if args.PgToApiServerTemplate != nil {
-		args.pgToApiServerTemplate = args.PgToApiServerTemplate.ToStringPtrOutput().ApplyT(func(pgToApiServerTemplate *string) string {
-			if pgToApiServerTemplate == nil || *pgToApiServerTemplate == "" {
-				return defaultPgToApiServerTemplate
-			}
-			return *pgToApiServerTemplate
-		}).(pulumi.StringOutput)
+	args.pgToAPIServerTemplate = pulumi.String(defaultPgToAPIServerTemplate).ToStringOutput()
+	if args.PgToAPIServerTemplate != nil {
+		args.pgToAPIServerTemplate = args.PgToAPIServerTemplate.ToStringPtrOutput().
+			ApplyT(func(pgToApiServerTemplate *string) string {
+				if pgToApiServerTemplate == nil || *pgToApiServerTemplate == "" {
+					return defaultPgToAPIServerTemplate
+				}
+				return *pgToApiServerTemplate
+			}).(pulumi.StringOutput)
 	}
 
 	// Define custom postgres-operator
@@ -176,7 +183,7 @@ func (psql *PostgreSQL) check(args *PostgreSQLArgs) error {
 	cerr := make(chan error, checks)
 
 	// Verify the template is syntactically valid.
-	args.pgToApiServerTemplate.ApplyT(func(pgToApiServerTemplate string) error {
+	args.pgToAPIServerTemplate.ApplyT(func(pgToApiServerTemplate string) error {
 		defer wg.Done()
 
 		_, err := template.New("pg-to-apiserver").
@@ -196,7 +203,11 @@ func (psql *PostgreSQL) check(args *PostgreSQLArgs) error {
 	return merr
 }
 
-func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opts ...pulumi.ResourceOption) (err error) {
+func (psql *PostgreSQL) provision(
+	ctx *pulumi.Context,
+	args *PostgreSQLArgs,
+	opts ...pulumi.ResourceOption,
+) (err error) {
 
 	psql.clusterName = pulumi.Sprintf("%s-%s", args.clusterNamePrefix, ctx.Stack())
 
@@ -227,26 +238,27 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 	}).ToStringMapOutput()
 
 	// postgreSQL to kube-apiserver
-	psql.pgToApi, err = yamlv2.NewConfigGroup(ctx, "kube-apiserver-netpol", &yamlv2.ConfigGroupArgs{
-		Yaml: pulumi.All(args.pgToApiServerTemplate, args.Namespace, psql.commonLabels).ApplyT(func(all []any) (string, error) {
-			pgToApiServerTemplate := all[0].(string)
-			namespace := all[1].(string)
-			podLabels := all[2].(map[string]string)
+	psql.pgToAPI, err = yamlv2.NewConfigGroup(ctx, "kube-apiserver-netpol", &yamlv2.ConfigGroupArgs{
+		Yaml: pulumi.All(args.pgToAPIServerTemplate, args.Namespace, psql.commonLabels).
+			ApplyT(func(all []any) (string, error) {
+				pgToAPIServerTemplate := all[0].(string)
+				namespace := all[1].(string)
+				podLabels := all[2].(map[string]string)
 
-			tmpl, _ := template.New("pg-to-apiserver").
-				Funcs(sprig.FuncMap()).
-				Parse(pgToApiServerTemplate)
+				tmpl, _ := template.New("pg-to-apiserver").
+					Funcs(sprig.FuncMap()).
+					Parse(pgToAPIServerTemplate)
 
-			buf := &bytes.Buffer{}
-			if err := tmpl.Execute(buf, map[string]any{
-				"Stack":     ctx.Stack(),
-				"Namespace": namespace,
-				"PodLabels": podLabels,
-			}); err != nil {
-				return "", err
-			}
-			return buf.String(), nil
-		}).(pulumi.StringOutput),
+				buf := &bytes.Buffer{}
+				if err := tmpl.Execute(buf, map[string]any{
+					"Stack":     ctx.Stack(),
+					"Namespace": namespace,
+					"PodLabels": podLabels,
+				}); err != nil {
+					return "", err
+				}
+				return buf.String(), nil
+			}).(pulumi.StringOutput),
 	}, opts...)
 	if err != nil {
 		return err
@@ -501,7 +513,7 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 
 	opts = append(opts, pulumi.DependsOn([]pulumi.Resource{
 		psql.userSec,
-		psql.pgToApi,
+		psql.pgToAPI,
 		psql.poolerFromClient,
 		psql.poolerToPg,
 		psql.pgFromPooler,
@@ -609,7 +621,10 @@ func (psql *PostgreSQL) provision(ctx *pulumi.Context, args *PostgreSQLArgs, opt
 }
 
 func (psql *PostgreSQL) outputs(ctx *pulumi.Context) error {
-	psql.URL = pulumi.Sprintf("postgresql+psycopg2://%s:%s@%s-pooler:5432/%s", psql.userName, psql.userPass.Result, psql.clusterName, psql.userName)
+	psql.URL = pulumi.Sprintf(
+		"postgresql+psycopg2://%[1]s:%[2]s@%[3]s-pooler:5432/%[1]s",
+		psql.userName, psql.userPass.Result, psql.clusterName,
+	)
 	psql.PodLabels = psql.poolerPodLabels
 
 	return ctx.RegisterResourceOutputs(psql, pulumi.Map{

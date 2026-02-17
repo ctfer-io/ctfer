@@ -85,7 +85,7 @@ func main() {
 			Namespace: pulumi.String(cfg.Namespace),
 			Platform: &services.PlatformArgs{
 				Image:              pulumi.String(cfg.Platform.Image),
-				ChallManagerURL:    pulumi.String(cfg.ChallManagerUrl),
+				ChallManagerURL:    pulumi.String(cfg.ChallManagerURL),
 				Hostname:           pulumi.String(cfg.Platform.Hostname),
 				Crt:                pulumi.String(cfg.Platform.Crt),
 				Key:                pulumi.String(cfg.Platform.Key),
@@ -133,7 +133,7 @@ type (
 		Namespace        string
 		ImagesRepository string
 		ChartsRepository string
-		ChallManagerUrl  string
+		ChallManagerURL  string
 		IngressNamespace string
 		IngressLabels    map[string]string
 
@@ -174,7 +174,7 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 		Namespace:        cfg.Get("namespace"),
 		ImagesRepository: cfg.Get("images-repository"),
 		ChartsRepository: cfg.Get("charts-repository"),
-		ChallManagerUrl:  cfg.Get("chall-manager-url"),
+		ChallManagerURL:  cfg.Get("chall-manager-url"),
 		IngressNamespace: cfg.Get("ingress-namespace"),
 		Platform:         &PlatformConfig{},
 		DB:               &DBConfig{},
