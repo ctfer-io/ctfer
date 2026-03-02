@@ -83,4 +83,4 @@ jobs:
 
       - name: Run Smoke Tests
         run: |
-          go test -v ./smoke/ -run=^Test_S_ -timeout=10m
+          go test -v ./smoke/ -run=^Test_S_
