@@ -74,15 +74,17 @@ pulumi config set --path plateform.storage-size 10Gi
 If you want to configure several workers on CTFd.
 
 ```bash
-pulumi config set --path platform.workers 3
-pulumi config set --path platform.replicas 3
+pulumi config set-all \
+  --path platform.workers 3 \
+  --path platform.replicas 3
 ```
 
 > [!WARNING]
 > You will need a ReadWriteMany compatible CSI (e.g., Longhorn) if the Pods are scheduled on several nodes
 > ```bash
-> pulumi config set --path platform.pvc-access-modes[0] ReadWriteMany
-> pulumi config set --path platform.storage-class longhorn
+> pulumi config set-all \
+>   --path platform.pvc-access-modes[0] ReadWriteMany \
+>   --path platform.storage-class longhorn
 > ```
 
 #### Requests and Limits
@@ -90,11 +92,11 @@ pulumi config set --path platform.replicas 3
 If you want to configure other resources than default.
 
 ```bash
-pulumi config set --path platform.requests.cpu 1
-pulumi config set --path platform.requests.memory 2Gi
-
-pulumi config set --path platform.limits.cpu 1
-pulumi config set --path platform.limits.memory 1Gi
+pulumi config set-all \
+  --path platform.requests.cpu 1 \
+  --path platform.requests.memory 2Gi \
+  --path platform.limits.cpu 1 \
+  --path platform.limits.memory 1Gi
 ```
 
 If you don't need air-gap settings, you can **directly skip to [the deployment](#lets-do-it)**.
@@ -115,8 +117,9 @@ hauler store copy registry://registry.dev1.ctfer-io.lab
 Then, configure your Pulumi stack.
 
 ```bash
-pulumi config set images-repository registry.dev1.ctfer-io.lab
-pulumi config set charts-repository oci://registry.dev1.ctfer-io.lab/hauler
+pulumi config set-all \
+  images-repository registry.dev1.ctfer-io.lab \
+  charts-repository oci://registry.dev1.ctfer-io.lab/hauler
 ```
 
 ### Let's do it!
@@ -124,8 +127,10 @@ pulumi config set charts-repository oci://registry.dev1.ctfer-io.lab/hauler
 Now the last-mile for infrastructure-specific configuration, and you should be good to deploy CTFer! 💪
 
 ```bash
-pulumi config set --path platform.hostname ctfd.dev1.ctfer-io.lab
-pulumi config set --path ingress-labels.name traefik
-pulumi config set --path db.operator-namespace cnpg-system
-pulumi up 
+pulumi config set-all \
+  --path platform.hostname ctfd.dev1.ctfer-io.lab \
+  --path ingress-labels.name traefik \
+  --path db.operator-namespace cnpg-system
+
+pulumi up
 ```
