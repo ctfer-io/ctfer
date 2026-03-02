@@ -2,7 +2,7 @@ package smoke
 
 import (
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,7 +17,7 @@ func Test_S_Smoke(t *testing.T) {
 	integration.ProgramTest(t, &integration.ProgramTestOptions{
 		Quick:       true,
 		SkipRefresh: true,
-		Dir:         path.Join(pwd, ".."),
+		Dir:         filepath.Join(pwd, ".."),
 		StackName:   stackName(t.Name()),
 	})
 }
