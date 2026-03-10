@@ -341,7 +341,14 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 				"repository": pulumi.String("bitnamilegacy/redis"),
 			},
 		},
-	}, opts...)
+	}, append(opts,
+		pulumi.Timeouts(&pulumi.CustomTimeouts{
+			// Deploying a Redis cluster can take a while, give long timeouts so it does not fail in smoke tests
+			Create: "30m",
+			Update: "30m",
+			Delete: "30m",
+		}),
+	)...)
 	if err != nil {
 		return
 	}
