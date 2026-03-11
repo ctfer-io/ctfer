@@ -90,6 +90,16 @@ config:
     type: string
     description: "The DB operator namespace."
     default: ""
+  db.replicas:
+    type: integer
+    description: "The number of replicas for the database."
+    default: 1
+
+  # region cache
+  cache.replicas:
+    type: integer
+    description: The number of replicas for the cache.
+    default: 1
 
   # region otel
   otel.endpoint:

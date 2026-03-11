@@ -74,11 +74,15 @@ type DBArgs struct {
 	StorageClassName pulumi.StringInput
 
 	OperatorNamespace pulumi.StringInput
+
+	Replicas pulumi.IntInput
 }
 
 // CacheArgs is the encapsulation of platform-specific arguments.
 // Current choice is Redis.
-type CacheArgs struct{}
+type CacheArgs struct {
+	Replicas pulumi.IntInput
+}
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
 func NewCTFer(ctx *pulumi.Context, name string, args *CTFerArgs, opts ...pulumi.ResourceOption) (*CTFer, error) {
@@ -116,6 +120,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		Registry:                  args.ImagesRepository,
 		PostgresOperatorNamespace: args.DB.OperatorNamespace,
 		StorageClassName:          args.DB.StorageClassName,
+		Replicas:                  args.DB.Replicas,
 	}, opts...)
 	if err != nil {
 		return
@@ -129,6 +134,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 		ChartsRepository: args.ChartsRepository,
 		ChartVersion:     pulumi.String("20.13.4"),
 		Registry:         args.ImagesRepository,
+		Replicas:         args.Cache.Replicas,
 	}, opts...)
 	if err != nil {
 		return

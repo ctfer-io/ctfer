@@ -462,8 +462,11 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
 				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
-			Namespace:   args.Namespace,
-			Annotations: args.annotations,
+			Namespace: args.Namespace,
+			Annotations: args.annotations.ApplyT(func(annotations map[string]string) map[string]string {
+				annotations["pulumi.com/skipAwait"] = "true" // Don't wait for the LoadBalancer
+				return annotations
+			}).(pulumi.StringMapOutput),
 		},
 		Spec: netwv1.IngressSpecArgs{
 			Rules: netwv1.IngressRuleArray{

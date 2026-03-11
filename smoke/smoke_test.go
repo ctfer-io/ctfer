@@ -1,6 +1,7 @@
 package smoke
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,9 @@ func Test_S_Smoke(t *testing.T) {
 		SkipRefresh: true,
 		Dir:         filepath.Join(pwd, ".."),
 		StackName:   stackName(t.Name()),
+		Env: []string{
+			fmt.Sprintf("GOCOVERDIR=%s", filepath.Join(pwd, "..", "coverdir")),
+		},
 	})
 }
 

@@ -2,7 +2,6 @@ package parts
 
 import (
 	"bytes"
-	"context"
 	"sync"
 	"text/template"
 
@@ -66,6 +65,9 @@ type PostgreSQLArgs struct {
 
 	StorageClassName pulumi.StringInput
 	storageClassName pulumi.StringPtrOutput
+
+	Replicas pulumi.IntInput
+	replicas pulumi.IntOutput
 }
 
 const (
@@ -172,6 +174,16 @@ func (psql *PostgreSQL) defaults(args *PostgreSQLArgs) *PostgreSQLArgs {
 			}
 			return &scm
 		}).(pulumi.StringPtrOutput)
+	}
+
+	args.replicas = pulumi.Int(1).ToIntOutput()
+	if args.Replicas != nil {
+		args.replicas = args.Replicas.ToIntOutput().ApplyT(func(replicas int) int {
+			if replicas < 1 {
+				return 1
+			}
+			return replicas
+		}).(pulumi.IntOutput)
 	}
 
 	return args
@@ -522,55 +534,7 @@ func (psql *PostgreSQL) provision(
 		psql.pgFromOperator,
 	}))
 
-	// Create cluster with postgres-operator
-	psql.cluster, err = yamlv2.NewConfigGroup(ctx, "database-cluster", &yamlv2.ConfigGroupArgs{
-		Objs: pulumi.Array{
-			// Cluster
-			pulumi.Map{
-				"apiVersion": pulumi.String("postgresql.cnpg.io/v1"),
-				"kind":       pulumi.String("Cluster"),
-				"metadata": pulumi.Map{
-					"name":      psql.clusterName,
-					"namespace": args.Namespace,
-					"labels":    psql.pgPodLabels,
-				},
-				"spec": pulumi.Map{
-					"instances": pulumi.Int(3), // TODO make it configurable
-					"inheritedMetadata": pulumi.Map{
-						"labels": psql.pgPodLabels,
-					},
-					"storage": pulumi.Map{
-						"size":         pulumi.String("10Gi"), // TODO make it configurable
-						"storageClass": args.storageClassName,
-					},
-					"bootstrap": pulumi.Map{
-						"initdb": pulumi.Map{
-							"database": pulumi.String("ctfd"),
-							"owner":    psql.userName,
-							"secret": pulumi.Map{
-								"name": psql.userSec.Metadata.Name(),
-							},
-						},
-					},
-					"resources": pulumi.Map{
-						"requests": pulumi.Map{
-							"cpu":    pulumi.String("500m"),
-							"memory": pulumi.String("500Mi"),
-						},
-						"limits": pulumi.Map{
-							"cpu":    pulumi.String("500m"),
-							"memory": pulumi.String("500Mi"),
-						},
-					},
-				},
-			},
-		},
-	}, opts...)
-	if err != nil {
-		return err
-	}
-
-	// pooler explicit deps with cluster
+	// Create pooler and cluster with postgres-operator
 	psql.pooler, err = yamlv2.NewConfigGroup(ctx, "database-pooler", &yamlv2.ConfigGroupArgs{
 		Objs: pulumi.Array{
 			// Pooler
@@ -611,28 +575,56 @@ func (psql *PostgreSQL) provision(
 				},
 			},
 		},
-	}, append(
-		opts,
-		pulumi.DependsOn([]pulumi.Resource{
-			psql.cluster,
-		}),
-		pulumi.Transforms([]pulumi.ResourceTransform{
-			func(_ context.Context, args *pulumi.ResourceTransformArgs) *pulumi.ResourceTransformResult {
-				switch args.Type {
-				case "postgresql.cnpg.io/v1:Pooler":
-					// Remove the finalizers
-					args.Props["metadata"].(pulumi.Map)["finalizers"] = pulumi.StringArray{}
-					return &pulumi.ResourceTransformResult{
-						Props: args.Props,
-						Opts:  args.Opts,
-					}
+	}, opts...)
+	if err != nil {
+		return err
+	}
 
-				default:
-					return nil
-				}
+	psql.cluster, err = yamlv2.NewConfigGroup(ctx, "database-cluster", &yamlv2.ConfigGroupArgs{
+		Objs: pulumi.Array{
+			// Cluster
+			pulumi.Map{
+				"apiVersion": pulumi.String("postgresql.cnpg.io/v1"),
+				"kind":       pulumi.String("Cluster"),
+				"metadata": pulumi.Map{
+					"name":      psql.clusterName,
+					"namespace": args.Namespace,
+					"labels":    psql.pgPodLabels,
+				},
+				"spec": pulumi.Map{
+					"instances": args.replicas,
+					"inheritedMetadata": pulumi.Map{
+						"labels": psql.pgPodLabels,
+					},
+					"storage": pulumi.Map{
+						"size":         pulumi.String("10Gi"), // TODO make it configurable
+						"storageClass": args.storageClassName,
+					},
+					"bootstrap": pulumi.Map{
+						"initdb": pulumi.Map{
+							"database": pulumi.String("ctfd"),
+							"owner":    psql.userName,
+							"secret": pulumi.Map{
+								"name": psql.userSec.Metadata.Name(),
+							},
+						},
+					},
+					"resources": pulumi.Map{
+						"requests": pulumi.Map{
+							"cpu":    pulumi.String("500m"),
+							"memory": pulumi.String("500Mi"),
+						},
+						"limits": pulumi.Map{
+							"cpu":    pulumi.String("500m"),
+							"memory": pulumi.String("500Mi"),
+						},
+					},
+				},
 			},
-		}),
-	)...)
+		},
+	}, append(opts, pulumi.DependsOn([]pulumi.Resource{
+		psql.pooler,
+	}))...)
 	if err != nil {
 		return err
 	}

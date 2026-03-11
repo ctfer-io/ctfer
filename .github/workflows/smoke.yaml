@@ -83,7 +83,12 @@ jobs:
 
       - name: Run Smoke Tests
         run: |
-          go test -v ./smoke/ -run=^Test_S_ -coverprofile=integration.cov -timeout=30m
+          mkdir coverdir # Directory in which coverage data are exported
+          go test -v ./smoke/ -run=^Test_S_
+
+      - name: Merge coverages
+        run: |
+          go tool covdata merge -i=coverdir -o=integration.cov
 
       - name: Upload integration tests coverage
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

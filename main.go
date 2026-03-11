@@ -101,8 +101,11 @@ func main() {
 			DB: &services.DBArgs{
 				StorageClassName:  pulumi.String(cfg.DB.StorageClassName),
 				OperatorNamespace: pulumi.String(cfg.DB.OperatorNamespace),
+				Replicas:          pulumi.Int(cfg.DB.Replicas),
 			},
-			Cache:            &services.CacheArgs{},
+			Cache: &services.CacheArgs{
+				Replicas: pulumi.Int(cfg.Cache.Replicas),
+			},
 			ChartsRepository: pulumi.String(cfg.ChartsRepository),
 			ImagesRepository: pulumi.String(cfg.ImagesRepository),
 			IngressNamespace: pulumi.String(cfg.IngressNamespace),
@@ -138,6 +141,7 @@ type (
 		IngressLabels    map[string]string
 
 		Platform *PlatformConfig
+		Cache    *CacheConfig
 		DB       *DBConfig
 		OTel     *OTelConfig
 	}
@@ -157,9 +161,14 @@ type (
 		IngressAnnotations map[string]string `json:"ingress-annotations"`
 	}
 
+	CacheConfig struct {
+		Replicas int `json:"replicas"`
+	}
+
 	DBConfig struct {
 		StorageClassName  string `json:"storage-class-name"`
 		OperatorNamespace string `json:"operator-namespace"`
+		Replicas          int    `json:"replicas"`
 	}
 
 	OTelConfig struct {
@@ -177,6 +186,7 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 		ChallManagerURL:  cfg.Get("chall-manager-url"),
 		IngressNamespace: cfg.Get("ingress-namespace"),
 		Platform:         &PlatformConfig{},
+		Cache:            &CacheConfig{},
 		DB:               &DBConfig{},
 	}
 
@@ -184,6 +194,10 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 	_ = cfg.TryObject("ingress-labels", &c.IngressLabels)
 
 	if err := cfg.TryObject("platform", c.Platform); err != nil {
+		return nil, err
+	}
+
+	if err := cfg.TryObject("cache", c.Cache); err != nil {
 		return nil, err
 	}
 

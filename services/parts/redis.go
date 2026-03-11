@@ -67,6 +67,9 @@ type RedisArgs struct {
 	RedisToAPIServerTemplate pulumi.StringPtrInput
 	redisToAPIServerTemplate pulumi.StringOutput
 
+	Replicas pulumi.IntInput
+	replicas pulumi.IntOutput
+
 	registry pulumi.StringOutput
 	chartURL pulumi.StringOutput
 }
@@ -135,6 +138,16 @@ func (rd *Redis) defaults(args *RedisArgs) *RedisArgs {
 				}
 				return *redisToApiServerTemplate
 			}).(pulumi.StringOutput)
+	}
+
+	args.replicas = pulumi.Int(1).ToIntOutput()
+	if args.Replicas != nil {
+		args.replicas = args.Replicas.ToIntOutput().ApplyT(func(replicas int) int {
+			if replicas < 1 {
+				return 1
+			}
+			return replicas
+		}).(pulumi.IntOutput)
 	}
 
 	return args
@@ -276,7 +289,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 			},
 			"architecture": pulumi.String("replication"),
 			"replica": pulumi.Map{
-				"replicaCount": pulumi.Int(3),
+				"replicaCount": args.replicas,
 				"persistence": pulumi.Map{
 					"enabled": pulumi.Bool(false),
 				},
@@ -341,14 +354,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 				"repository": pulumi.String("bitnamilegacy/redis"),
 			},
 		},
-	}, append(opts,
-		pulumi.Timeouts(&pulumi.CustomTimeouts{
-			// Deploying a Redis cluster can take a while, give long timeouts so it does not fail in smoke tests
-			Create: "30m",
-			Update: "30m",
-			Delete: "30m",
-		}),
-	)...)
+	}, opts...)
 	if err != nil {
 		return
 	}
