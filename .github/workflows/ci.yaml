@@ -32,13 +32,47 @@ jobs:
         run: |
           go test ./... -run=^Test_U_ -coverprofile=unit.cov
 
-      - name: Upload coverage to Coveralls
-        uses: shogo82148/actions-goveralls@25f5320d970fb565100cf1993ada29be1bb196a1 # v1.10.0
+      - name: Upload unit tests coverage
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          path-to-profile: unit.cov
+          name: unit.cov
+          path: unit.cov
 
   smoke-tests:
     uses: ./.github/workflows/smoke.yaml
+
+  coverages:
+    name: Merge Coverage and Upload to Coveralls
+    runs-on: ubuntu-latest
+    needs: [unit-tests, smoke-tests]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: "go.work"
+
+      - name: Download unit coverage
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4.3.2
+        with:
+          name: unit.cov
+
+      - name: Download smoke coverage
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4.3.2
+        with:
+          name: smoke.cov
+
+      - name: Merge coverage files
+        run: |
+          go install go.shabbyrobe.org/gocovmerge/cmd/gocovmerge@fa4f82cfbf4d57c646c1ed0f35002bf1b89fbf7a
+          gocovmerge unit.cov smoke.cov > overall.cov
+
+      - name: Upload coverage to Coveralls
+        uses: shogo82148/actions-goveralls@25f5320d970fb565100cf1993ada29be1bb196a1 # v1.10.0
+        with:
+          path-to-profile: overall.cov
 
   go-lint:
     runs-on: ubuntu-latest

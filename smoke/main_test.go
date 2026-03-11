@@ -51,12 +51,12 @@ func TestMain(m *testing.M) {
 		fmt.Printf("Marshalling Pulumi.yaml content: %s\n", err)
 		os.Exit(1)
 	}
-	if err := os.WriteFile(filepath.Join(pdir, "Pulumi.yaml"), altered, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(pdir, "Pulumi.yaml"), altered, 0600); err != nil {
 		fmt.Printf("Writing back Pulumi.yaml: %s\n", err)
 		os.Exit(1)
 	}
 	defer func() {
-		_ = os.WriteFile(filepath.Join(pdir, "Pulumi.yaml"), b, 0644)
+		_ = os.WriteFile(filepath.Join(pdir, "Pulumi.yaml"), b, 0600)
 	}()
 
 	os.Exit(m.Run())
