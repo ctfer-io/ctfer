@@ -56,7 +56,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	defer func() {
-		_ = os.WriteFile(filepath.Join(pdir, "Pulumi.yaml"), b, 0600)
+		_ = os.WriteFile(filepath.Join(pdir, "Pulumi.yaml"), b, 0600) //nolint:gosec //#gosec G703 -- Don't bother with tests
 	}()
 
 	os.Exit(m.Run())
