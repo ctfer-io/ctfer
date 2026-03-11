@@ -2,6 +2,7 @@ package parts
 
 import (
 	"bytes"
+	"context"
 	"sync"
 	"text/template"
 
@@ -610,9 +611,28 @@ func (psql *PostgreSQL) provision(
 				},
 			},
 		},
-	}, append(opts, pulumi.DependsOn([]pulumi.Resource{
-		psql.cluster,
-	}))...)
+	}, append(
+		opts,
+		pulumi.DependsOn([]pulumi.Resource{
+			psql.cluster,
+		}),
+		pulumi.Transforms([]pulumi.ResourceTransform{
+			func(_ context.Context, args *pulumi.ResourceTransformArgs) *pulumi.ResourceTransformResult {
+				switch args.Type {
+				case "postgresql.cnpg.io/v1:Pooler":
+					// Remove the finalizers
+					args.Props["metadata"].(pulumi.Map)["finalizers"] = pulumi.StringArray{}
+					return &pulumi.ResourceTransformResult{
+						Props: args.Props,
+						Opts:  args.Opts,
+					}
+
+				default:
+					return nil
+				}
+			},
+		}),
+	)...)
 	if err != nil {
 		return err
 	}
