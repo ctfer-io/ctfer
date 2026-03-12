@@ -92,6 +92,15 @@ jobs:
         run: |
           pulumi login --local
 
+      # The following steps cleans up the GHA ubuntu environment.
+      # It is required due to Pulumi consuming large space when starting a prod-like
+      # environment for Integration Tests purposes.
+      # It removes around 25 Gib of disk space.
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          docker-images: false # keep everything around here to avoid shoothing kind and local registry
+
       - name: Run Smoke Tests
         run: |
           kubectl get pods -n kube-system
