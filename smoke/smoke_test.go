@@ -20,6 +20,9 @@ func Test_S_Smoke(t *testing.T) {
 		SkipRefresh: true,
 		Dir:         filepath.Join(pwd, ".."),
 		StackName:   stackName(t.Name()),
+		Config: map[string]string{
+			"platform": `{"requests":{}}`,
+		},
 		Env: []string{
 			fmt.Sprintf("GOCOVERDIR=%s", filepath.Join(pwd, "..", "coverdir")),
 		},
