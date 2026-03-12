@@ -114,7 +114,7 @@ func (ctfer *CTFer) defaults(args *CTFerArgs) *CTFerArgs {
 }
 
 func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulumi.ResourceOption) (err error) {
-	// Deploy HA Dababase with PostgreSQL Operator
+	// Deploy HA database with PostgreSQL Operator
 	ctfer.postgres, err = parts.NewPostgreSQL(ctx, "database", &parts.PostgreSQLArgs{
 		Namespace:                 args.Namespace,
 		Registry:                  args.ImagesRepository,
@@ -127,8 +127,6 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 	}
 
 	// Deploy Redis
-	// TODO scale up to >=3
-	// FIXME when scaled to 3, ctfd replicas errors
 	ctfer.redis, err = parts.NewRedis(ctx, "cache", &parts.RedisArgs{
 		Namespace:        args.Namespace,
 		ChartsRepository: args.ChartsRepository,
