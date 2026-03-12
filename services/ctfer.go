@@ -3,16 +3,14 @@ package services
 import (
 	"net/url"
 	"strconv"
-	"sync"
 
-	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
 	netwv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/networking/v1"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
 	"github.com/ctfer-io/ctfer/services/common"
-	"github.com/ctfer-io/ctfer/services/components"
+	"github.com/ctfer-io/ctfer/services/parts"
 )
 
 // CTFer is a pulumi Component that deploy a pre-configured CTFd stack
@@ -20,9 +18,9 @@ import (
 type CTFer struct {
 	pulumi.ResourceState
 
-	postgres *components.PostgreSQL
-	redis    *components.Redis
-	ctfd     *components.CTFd
+	postgres *parts.PostgreSQL
+	redis    *parts.Redis
+	ctfd     *parts.CTFd
 
 	ctfdNetpol *netwv1.NetworkPolicy
 
@@ -76,19 +74,21 @@ type DBArgs struct {
 	StorageClassName pulumi.StringInput
 
 	OperatorNamespace pulumi.StringInput
+
+	Replicas pulumi.IntInput
 }
 
 // CacheArgs is the encapsulation of platform-specific arguments.
 // Current choice is Redis.
-type CacheArgs struct{}
+type CacheArgs struct {
+	Replicas pulumi.IntInput
+}
 
 // NewCTFer creates a new pulumi Component Resource and registers it.
 func NewCTFer(ctx *pulumi.Context, name string, args *CTFerArgs, opts ...pulumi.ResourceOption) (*CTFer, error) {
 	ctfer := &CTFer{}
 	args = ctfer.defaults(args)
-	if err := ctfer.check(args); err != nil {
-		return nil, err
-	}
+
 	err := ctx.RegisterComponentResource("ctfer-io:ctfer", name, ctfer, opts...)
 	if err != nil {
 		return nil, err
@@ -113,59 +113,32 @@ func (ctfer *CTFer) defaults(args *CTFerArgs) *CTFerArgs {
 	return args
 }
 
-func (ctfer *CTFer) check(args *CTFerArgs) error {
-	checks := 0
-	wg := &sync.WaitGroup{}
-	wg.Add(checks)
-	cerr := make(chan error, checks)
-
-	// TODO perform validation checks
-	// smth.ApplyT(func(abc def) ghi {
-	//     defer wg.Done()
-	//
-	//     ... the actual test
-	//     if err != nil {
-	//         cerr <- err
-	//         return
-	//     }
-	// })
-
-	wg.Wait()
-	close(cerr)
-
-	var merr error
-	for err := range cerr {
-		merr = multierror.Append(merr, err)
-	}
-	return merr
-}
-
 func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulumi.ResourceOption) (err error) {
-	// Deploy HA Dababase with PostgreSQL Operator
-	ctfer.postgres, err = components.NewPostgreSQL(ctx, "database", &components.PostgreSQLArgs{
+	// Deploy HA database with PostgreSQL Operator
+	ctfer.postgres, err = parts.NewPostgreSQL(ctx, "database", &parts.PostgreSQLArgs{
 		Namespace:                 args.Namespace,
 		Registry:                  args.ImagesRepository,
 		PostgresOperatorNamespace: args.DB.OperatorNamespace,
 		StorageClassName:          args.DB.StorageClassName,
+		Replicas:                  args.DB.Replicas,
 	}, opts...)
 	if err != nil {
 		return
 	}
 
 	// Deploy Redis
-	// TODO scale up to >=3
-	// FIXME when scaled to 3, ctfd replicas errors
-	ctfer.redis, err = components.NewRedis(ctx, "cache", &components.RedisArgs{
+	ctfer.redis, err = parts.NewRedis(ctx, "cache", &parts.RedisArgs{
 		Namespace:        args.Namespace,
 		ChartsRepository: args.ChartsRepository,
 		ChartVersion:     pulumi.String("20.13.4"),
 		Registry:         args.ImagesRepository,
+		Replicas:         args.Cache.Replicas,
 	}, opts...)
 	if err != nil {
 		return
 	}
 
-	ctfdArgs := &components.CTFdArgs{
+	ctfdArgs := &parts.CTFdArgs{
 		Namespace: args.Namespace,
 
 		RedisURL:        ctfer.redis.URL,
@@ -195,7 +168,7 @@ func (ctfer *CTFer) provision(ctx *pulumi.Context, args *CTFerArgs, opts ...pulu
 			Insecure:    args.OTel.Insecure,
 		}
 	}
-	ctfer.ctfd, err = components.NewCTFd(ctx, "platform", ctfdArgs, append(opts, pulumi.DependsOn([]pulumi.Resource{
+	ctfer.ctfd, err = parts.NewCTFd(ctx, "platform", ctfdArgs, append(opts, pulumi.DependsOn([]pulumi.Resource{
 		ctfer.postgres,
 		ctfer.redis,
 	}))...)

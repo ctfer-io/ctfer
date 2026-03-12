@@ -1,0 +1,101 @@
+name: Smoke tests
+
+on:
+  workflow_call:
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: "go.mod"
+
+      - name: Write config file
+        run: |
+          cat <<EOF > kind-config.yaml
+          apiVersion: kind.x-k8s.io/v1alpha4
+          kind: Cluster
+          kubeadmConfigPatches:
+          - |
+            kind: ClusterConfiguration
+            apiServer:
+              extraArgs:
+                "service-node-port-range": "30000-30005"
+          nodes:
+          - role: control-plane
+            extraPortMappings:
+            - containerPort: 30000
+              hostPort: 30000
+            - containerPort: 30001
+              hostPort: 30001
+            - containerPort: 30002
+              hostPort: 30002
+            - containerPort: 30003
+              hostPort: 30003
+            - containerPort: 30004
+              hostPort: 30004
+            - containerPort: 30005
+              hostPort: 30005
+          networking:
+            disableDefaultCNI: true
+          EOF
+      - name: Set up Kind cluster
+        uses: helm/kind-action@92086f6be054225fa813e0a4b13787fc9088faab # v1.13.0
+        with:
+          config: kind-config.yaml
+          cluster_name: kind
+        env:
+          KIND_EXPERIMENTAL_DOCKER_NETWORK: kind
+
+      - name: Patch local-path to mount shared filesystem path on the single kind node
+        run: |
+          # From https://github.com/kubernetes-sigs/kind/issues/1487#issuecomment-2211072952
+          kubectl -n local-path-storage patch configmap local-path-config -p '{"data": {"config.json": "{\n\"sharedFileSystemPath\": \"/var/local-path-provisioner\"\n}"}}'
+
+      - name: Setup Cilium as Kind CNI
+        run: |
+          # See https://docs.cilium.io/en/stable/installation/kind/#install-cilium
+          helm repo add cilium https://helm.cilium.io/
+
+          helm install cilium cilium/cilium --version 1.19.1 \
+            --namespace kube-system \
+            --set image.pullPolicy=IfNotPresent \
+            --set ipam.mode=kubernetes
+
+      - name: Setup CNPG
+        run: |
+          helm repo add cnpg https://cloudnative-pg.github.io/charts
+          helm upgrade --install cnpg \
+            --namespace cnpg-system \
+            --create-namespace \
+            cnpg/cloudnative-pg
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
+      - name: Prepare environment
+        run: |
+          pulumi login --local
+
+      - name: Run Smoke Tests
+        run: |
+          mkdir coverdir # Directory in which coverage data are exported
+          go test -v ./smoke/ -run=^Test_S_ -timeout=30m
+
+      - name: Merge coverages
+        run: |
+          go tool covdata textfmt -i=coverdir -o=smoke.cov
+
+          # Point back to the actual Go module tested.
+          # It cannot be inferred, leading to this highly precise step.
+          sed -i 's|^/home/runner/work/ctfer/ctfer|github.com/ctfer-io/ctfer|' smoke.cov
+
+      - name: Upload smoke tests coverage
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: smoke.cov
+          path: smoke.cov

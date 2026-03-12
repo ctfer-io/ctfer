@@ -1,11 +1,10 @@
-package components
+package parts
 
 import (
 	"strings"
 	"sync"
 
 	"github.com/ctfer-io/ctfer/services/common"
-	"github.com/hashicorp/go-multierror"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -69,8 +68,10 @@ type CTFdArgs struct {
 
 	// Exposure settings
 
-	Crt      pulumi.StringInput
-	Key      pulumi.StringInput
+	Crt     pulumi.StringInput
+	Key     pulumi.StringInput
+	withTLS bool
+
 	Hostname pulumi.StringInput
 
 	Annotations pulumi.StringMapInput
@@ -85,9 +86,7 @@ const (
 func NewCTFd(ctx *pulumi.Context, name string, args *CTFdArgs, opts ...pulumi.ResourceOption) (*CTFd, error) {
 	ctfd := &CTFd{}
 	args = ctfd.defaults(args)
-	if err := ctfd.check(args); err != nil {
-		return nil, err
-	}
+
 	err := ctx.RegisterComponentResource("ctfer-io:ctfer:ctfd", name, ctfd, opts...)
 	if err != nil {
 		return nil, err
@@ -159,34 +158,22 @@ func (ctfd *CTFd) defaults(args *CTFdArgs) *CTFdArgs {
 		args.annotations = args.Annotations.ToStringMapOutput()
 	}
 
-	return args
-}
-
-func (ctfd *CTFd) check(args *CTFdArgs) error {
-	checks := 0
-	wg := &sync.WaitGroup{}
-	wg.Add(checks)
-	cerr := make(chan error, checks)
-
-	// TODO perform validation checks
-	// smth.ApplyT(func(abc def) ghi {
-	//     defer wg.Done()
-	//
-	//     ... the actual test
-	//     if err != nil {
-	//         cerr <- err
-	//         return
-	//     }
-	// })
-
-	wg.Wait()
-	close(cerr)
-
-	var merr error
-	for err := range cerr {
-		merr = multierror.Append(merr, err)
+	// Check if will need TLS on ingress
+	args.withTLS = args.Crt != nil && args.Key != nil
+	if args.withTLS {
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+		pulumi.All(args.Crt, args.Key).ApplyT(func(all []any) error {
+			crt := all[0].(string)
+			key := all[1].(string)
+			args.withTLS = crt != "" && key != ""
+			wg.Done()
+			return nil
+		})
+		wg.Wait()
 	}
-	return merr
+
+	return args
 }
 
 func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.ResourceOption) (err error) {
@@ -438,10 +425,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		return
 	}
 
-	// FIXME the secret still be created even if the pulumi config does not exists
-	// The secret is not valid so the default traefik cert will be used
+	// Create the secret if necessary
 	tlsOps := netwv1.IngressTLSArray{}
-	if args.Crt != nil && args.Key != nil {
+	if args.withTLS {
 		ctfd.tlssec, err = corev1.NewSecret(ctx, "ctfd-secret-tls", &corev1.SecretArgs{
 			Metadata: metav1.ObjectMetaArgs{
 				Namespace: args.Namespace,
@@ -464,7 +450,8 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 		tlsOps = append(tlsOps,
 			netwv1.IngressTLSArgs{
 				SecretName: ctfd.tlssec.Metadata.Name(),
-			})
+			},
+		)
 	}
 
 	ctfd.ing, err = netwv1.NewIngress(ctx, "ctfd-ingress", &netwv1.IngressArgs{
@@ -474,8 +461,11 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
 				"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 			},
-			Namespace:   args.Namespace,
-			Annotations: args.annotations,
+			Namespace: args.Namespace,
+			Annotations: args.annotations.ApplyT(func(annotations map[string]string) map[string]string {
+				annotations["pulumi.com/skipAwait"] = "true" // Don't wait for the LoadBalancer
+				return annotations
+			}).(pulumi.StringMapOutput),
 		},
 		Spec: netwv1.IngressSpecArgs{
 			Rules: netwv1.IngressRuleArray{
@@ -488,11 +478,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 								PathType: pulumi.String("Prefix"),
 								Backend: netwv1.IngressBackendArgs{
 									Service: netwv1.IngressServiceBackendArgs{
-										// Name: pulumi.String("ctfd-keda-svc"),
 										Name: ctfd.svc.Metadata.Name().Elem(),
 										Port: netwv1.ServiceBackendPortArgs{
 											Name: pulumi.String("web"),
-											// Number: pulumi.Int(8080),
 										},
 									},
 								},

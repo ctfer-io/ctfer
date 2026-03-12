@@ -18,11 +18,12 @@ func main() {
 		}
 
 		// Create CTF's namespace
-		ns, err := corev1.NewNamespace(ctx, "namespace", &corev1.NamespaceArgs{
+		ns, err := corev1.NewNamespace(ctx, "ctf-ns", &corev1.NamespaceArgs{
 			Metadata: metav1.ObjectMetaArgs{
 				Labels: pulumi.StringMap{
-					"ctfer.io/app-name": pulumi.String("ctfd"),
-					"ctfer.io/part-of":  pulumi.String("ctfer"),
+					"app.kubernetes.io/component": pulumi.String("ctfer"),
+					"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+					"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 				},
 				Name: pulumi.String(cfg.Namespace),
 			},
@@ -32,12 +33,13 @@ func main() {
 		}
 
 		// Grant DNS resolution
-		_, err = netwv1.NewNetworkPolicy(ctx, "dns", &netwv1.NetworkPolicyArgs{
+		_, err = netwv1.NewNetworkPolicy(ctx, "grant-dns", &netwv1.NetworkPolicyArgs{
 			Metadata: metav1.ObjectMetaArgs{
 				Namespace: ns.Metadata.Name().Elem(),
 				Labels: pulumi.StringMap{
-					"ctfer.io/app-name": pulumi.String("ctfd"),
-					"ctfer.io/part-of":  pulumi.String("ctfer"),
+					"app.kubernetes.io/component": pulumi.String("ctfer"),
+					"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
+					"ctfer.io/stack-name":         pulumi.String(ctx.Stack()),
 				},
 			},
 			Spec: netwv1.NetworkPolicySpecArgs{
@@ -83,7 +85,7 @@ func main() {
 			Namespace: pulumi.String(cfg.Namespace),
 			Platform: &services.PlatformArgs{
 				Image:              pulumi.String(cfg.Platform.Image),
-				ChallManagerURL:    pulumi.String(cfg.ChallManagerUrl),
+				ChallManagerURL:    pulumi.String(cfg.ChallManagerURL),
 				Hostname:           pulumi.String(cfg.Platform.Hostname),
 				Crt:                pulumi.String(cfg.Platform.Crt),
 				Key:                pulumi.String(cfg.Platform.Key),
@@ -99,18 +101,21 @@ func main() {
 			DB: &services.DBArgs{
 				StorageClassName:  pulumi.String(cfg.DB.StorageClassName),
 				OperatorNamespace: pulumi.String(cfg.DB.OperatorNamespace),
+				Replicas:          pulumi.Int(cfg.DB.Replicas),
 			},
-			Cache:            &services.CacheArgs{},
+			Cache: &services.CacheArgs{
+				Replicas: pulumi.Int(cfg.Cache.Replicas),
+			},
 			ChartsRepository: pulumi.String(cfg.ChartsRepository),
 			ImagesRepository: pulumi.String(cfg.ImagesRepository),
 			IngressNamespace: pulumi.String(cfg.IngressNamespace),
 			IngressLabels:    pulumi.ToStringMap(cfg.IngressLabels),
 		}
-		if cfg.Otel != nil {
+		if cfg.OTel != nil {
 			ctferArgs.OTel = &common.OTelArgs{
 				ServiceName: pulumi.String(ctx.Stack()),
-				Endpoint:    pulumi.String(cfg.Otel.Endpoint),
-				Insecure:    cfg.Otel.Insecure,
+				Endpoint:    pulumi.String(cfg.OTel.Endpoint),
+				Insecure:    cfg.OTel.Insecure,
 			}
 		}
 		ctfer, err := services.NewCTFer(ctx, ctx.Stack(), ctferArgs)
@@ -131,13 +136,14 @@ type (
 		Namespace        string
 		ImagesRepository string
 		ChartsRepository string
-		ChallManagerUrl  string
+		ChallManagerURL  string
 		IngressNamespace string
 		IngressLabels    map[string]string
 
 		Platform *PlatformConfig
+		Cache    *CacheConfig
 		DB       *DBConfig
-		Otel     *OtelConfig
+		OTel     *OTelConfig
 	}
 
 	PlatformConfig struct {
@@ -155,12 +161,17 @@ type (
 		IngressAnnotations map[string]string `json:"ingress-annotations"`
 	}
 
+	CacheConfig struct {
+		Replicas int `json:"replicas"`
+	}
+
 	DBConfig struct {
 		StorageClassName  string `json:"storage-class-name"`
 		OperatorNamespace string `json:"operator-namespace"`
+		Replicas          int    `json:"replicas"`
 	}
 
-	OtelConfig struct {
+	OTelConfig struct {
 		Endpoint string `json:"endpoint"`
 		Insecure bool   `json:"insecure"`
 	}
@@ -172,17 +183,27 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 		Namespace:        cfg.Get("namespace"),
 		ImagesRepository: cfg.Get("images-repository"),
 		ChartsRepository: cfg.Get("charts-repository"),
-		ChallManagerUrl:  cfg.Get("chall-manager-url"),
+		ChallManagerURL:  cfg.Get("chall-manager-url"),
 		IngressNamespace: cfg.Get("ingress-namespace"),
 		Platform:         &PlatformConfig{},
+		Cache:            &CacheConfig{},
 		DB:               &DBConfig{},
 	}
 
-	if err := cfg.TryObject("ingress-labels", &c.IngressLabels); err != nil {
-		return nil, err
-	}
+	// As we cannot default this one, we silently drop the error is not are set
+	_ = cfg.TryObject("ingress-labels", &c.IngressLabels)
 
 	if err := cfg.TryObject("platform", c.Platform); err != nil {
+		return nil, err
+	}
+	if platformRequestsCPU := cfg.Get("platform-requests-cpu"); platformRequestsCPU != "" {
+		c.Platform.Requests["cpu"] = platformRequestsCPU
+	}
+	if platformRequestsMemory := cfg.Get("platform-requests-memory"); platformRequestsMemory != "" {
+		c.Platform.Requests["memory"] = platformRequestsMemory
+	}
+
+	if err := cfg.TryObject("cache", c.Cache); err != nil {
 		return nil, err
 	}
 
@@ -190,9 +211,9 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 		return nil, err
 	}
 
-	var otelC OtelConfig
+	var otelC OTelConfig
 	if err := cfg.TryObject("otel", &otelC); err == nil && otelC.Endpoint != "" {
-		c.Otel = &otelC
+		c.OTel = &otelC
 	}
 
 	return c, nil

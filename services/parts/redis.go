@@ -1,4 +1,4 @@
-package components
+package parts
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ import (
 
 const (
 	defaultRedisChartURL            = "oci://registry-1.docker.io/bitnamicharts/redis"
-	defaultRedisToApiServerTemplate = `
+	defaultRedisToAPIServerTemplate = `
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -47,7 +47,7 @@ type Redis struct {
 	pass       *random.RandomPassword
 	sec        *corev1.Secret
 	chart      *helmv4.Chart
-	redisToApi *yamlv2.ConfigGroup
+	redisToAPI *yamlv2.ConfigGroup
 
 	podLabels pulumi.StringMapInput
 
@@ -61,14 +61,17 @@ type RedisArgs struct {
 	ChartVersion     pulumi.StringInput
 	Registry         pulumi.StringInput
 
-	// RedisToApiServerTemplate is a Go text/template that defines the NetworkPolicy
+	// RedisToAPIServerTemplate is a Go text/template that defines the NetworkPolicy
 	// YAML schema to use.
 	// If none set, it is defaulted to a cilium.io/v2 CiliumNetworkPolicy.
-	RedisToApiServerTemplate pulumi.StringPtrInput
-	redisToApiServerTemplate pulumi.StringOutput
+	RedisToAPIServerTemplate pulumi.StringPtrInput
+	redisToAPIServerTemplate pulumi.StringOutput
+
+	Replicas pulumi.IntInput
+	replicas pulumi.IntOutput
 
 	registry pulumi.StringOutput
-	chartUrl pulumi.StringOutput
+	chartURL pulumi.StringOutput
 }
 
 func NewRedis(ctx *pulumi.Context, name string, args *RedisArgs, opts ...pulumi.ResourceOption) (*Redis, error) {
@@ -98,9 +101,9 @@ func (rd *Redis) defaults(args *RedisArgs) *RedisArgs {
 		args = &RedisArgs{}
 	}
 
-	args.chartUrl = pulumi.String(defaultRedisChartURL).ToStringOutput()
+	args.chartURL = pulumi.String(defaultRedisChartURL).ToStringOutput()
 	if args.ChartsRepository != nil {
-		args.chartUrl = args.ChartsRepository.ToStringOutput().ApplyT(func(chartRepository string) string {
+		args.chartURL = args.ChartsRepository.ToStringOutput().ApplyT(func(chartRepository string) string {
 			if chartRepository == "" {
 				return defaultRedisChartURL
 			}
@@ -126,14 +129,25 @@ func (rd *Redis) defaults(args *RedisArgs) *RedisArgs {
 		}).(pulumi.StringOutput)
 	}
 
-	args.redisToApiServerTemplate = pulumi.String(defaultRedisToApiServerTemplate).ToStringOutput()
-	if args.RedisToApiServerTemplate != nil {
-		args.redisToApiServerTemplate = args.RedisToApiServerTemplate.ToStringPtrOutput().ApplyT(func(redisToApiServerTemplate *string) string {
-			if redisToApiServerTemplate == nil || *redisToApiServerTemplate == "" {
-				return defaultRedisToApiServerTemplate
+	args.redisToAPIServerTemplate = pulumi.String(defaultRedisToAPIServerTemplate).ToStringOutput()
+	if args.RedisToAPIServerTemplate != nil {
+		args.redisToAPIServerTemplate = args.RedisToAPIServerTemplate.ToStringPtrOutput().
+			ApplyT(func(redisToApiServerTemplate *string) string {
+				if redisToApiServerTemplate == nil || *redisToApiServerTemplate == "" {
+					return defaultRedisToAPIServerTemplate
+				}
+				return *redisToApiServerTemplate
+			}).(pulumi.StringOutput)
+	}
+
+	args.replicas = pulumi.Int(1).ToIntOutput()
+	if args.Replicas != nil {
+		args.replicas = args.Replicas.ToIntOutput().ApplyT(func(replicas int) int {
+			if replicas < 1 {
+				return 1
 			}
-			return *redisToApiServerTemplate
-		}).(pulumi.StringOutput)
+			return replicas
+		}).(pulumi.IntOutput)
 	}
 
 	return args
@@ -146,7 +160,7 @@ func (rd *Redis) check(args *RedisArgs) error {
 	cerr := make(chan error, checks)
 
 	// Verify the template is syntactically valid.
-	args.redisToApiServerTemplate.ApplyT(func(redisToApiServerTemplate string) error {
+	args.redisToAPIServerTemplate.ApplyT(func(redisToApiServerTemplate string) error {
 		defer wg.Done()
 
 		_, err := template.New("redis-to-apiserver").
@@ -173,15 +187,15 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 	}
 
 	// redis to kube-apiserver
-	rd.redisToApi, err = yamlv2.NewConfigGroup(ctx, "redis-to-kube-apiserver-netpol", &yamlv2.ConfigGroupArgs{
-		Yaml: pulumi.All(args.redisToApiServerTemplate, args.Namespace, rd.podLabels).ApplyT(func(all []any) (string, error) {
-			redisToApiServerTemplate := all[0].(string)
+	rd.redisToAPI, err = yamlv2.NewConfigGroup(ctx, "redis-to-kube-apiserver-netpol", &yamlv2.ConfigGroupArgs{
+		Yaml: pulumi.All(args.redisToAPIServerTemplate, args.Namespace, rd.podLabels).ApplyT(func(all []any) (string, error) {
+			redisToAPIServerTemplate := all[0].(string)
 			namespace := all[1].(string)
 			podLabels := all[2].(map[string]string)
 
 			tmpl, _ := template.New("redis-to-apiserver").
 				Funcs(sprig.FuncMap()).
-				Parse(redisToApiServerTemplate)
+				Parse(redisToAPIServerTemplate)
 
 			buf := &bytes.Buffer{}
 			if err := tmpl.Execute(buf, map[string]any{
@@ -224,7 +238,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 	rd.chart, err = helmv4.NewChart(ctx, "redis", &helmv4.ChartArgs{
 		Namespace: args.Namespace,
 		Version:   pulumi.String("20.13.4"),
-		Chart:     args.chartUrl,
+		Chart:     args.chartURL,
 		Values: pulumi.Map{
 			"global": args.registry.ToStringOutput().ApplyT(func(repo string) map[string]any {
 				mp := map[string]any{}
@@ -275,7 +289,7 @@ func (rd *Redis) provision(ctx *pulumi.Context, args *RedisArgs, opts ...pulumi.
 			},
 			"architecture": pulumi.String("replication"),
 			"replica": pulumi.Map{
-				"replicaCount": pulumi.Int(3),
+				"replicaCount": args.replicas,
 				"persistence": pulumi.Map{
 					"enabled": pulumi.Bool(false),
 				},
