@@ -21,7 +21,7 @@ func Test_S_Smoke(t *testing.T) {
 		Dir:         filepath.Join(pwd, ".."),
 		StackName:   stackName(t.Name()),
 		Config: map[string]string{
-			"platform-requests-cpu":    "100m",  // we might be too short for more
+			"platform-requests-cpu":    "200m",  // we might be too short for more
 			"platform-requests-memory": "256Mi", // here we have plenty space
 		},
 		Env: []string{

@@ -81,40 +81,16 @@ jobs:
         run: |
           pulumi login --local
 
-      # The following steps cleans up the GHA ubuntu environment.
-      # It is required due to Pulumi consuming large space when starting a prod-like
-      # environment for Integration Tests purposes.
-      # It removes around 25 Gib of disk space.
-      # - name: Free Disk Space (Ubuntu)
-      #   uses: jlumbroso/free-disk-space@main
-      #   with:
-      #     docker-images: false # keep everything around here to avoid shoothing kind and local registry
-
       - name: Run Smoke Tests
         run: |
-          while true; do
-            kubectl describe pod -n ctfer -l app.kubernetes.io/name=ctfd
-            echo "--------------"
-            kubectl describe node
-            sleep 10
-          done &
-          MONITOR_PID=$!
-
           mkdir coverdir # Directory in which coverage data are exported
           go test -v ./smoke/ -run=^Test_S_ -timeout=30m
 
-          kill $MONITOR_PID
-
-      - name: Upload events
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        if: ${{ always() }}
-        with:
-          name: events.json
-          path: /tmp/smoke-events.json
-
       - name: Merge coverages
         run: |
-          go tool covdata merge -i=coverdir -o=smoke.cov
+          mkdir covdata
+          go tool covdata merge -i=coverdir -o=covdata
+          ls -al covdata
 
       - name: Upload smoke tests coverage
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

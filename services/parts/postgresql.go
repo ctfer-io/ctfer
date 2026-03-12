@@ -611,7 +611,7 @@ func (psql *PostgreSQL) provision(
 					},
 					"resources": pulumi.Map{
 						"requests": pulumi.Map{
-							"cpu":    pulumi.String("500m"),
+							"cpu":    pulumi.String("100m"),
 							"memory": pulumi.String("500Mi"),
 						},
 						"limits": pulumi.Map{
