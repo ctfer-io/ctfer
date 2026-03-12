@@ -94,6 +94,8 @@ jobs:
         run: |
           while true; do
             kubectl describe pod -n ctfer -l app.kubernetes.io/name=ctfd
+            echo "--------------"
+            kubectl describe node
             sleep 10
           done &
           MONITOR_PID=$!
