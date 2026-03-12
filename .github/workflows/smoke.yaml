@@ -56,6 +56,10 @@ jobs:
         run: |
           # From https://github.com/kubernetes-sigs/kind/issues/1487#issuecomment-2211072952
           kubectl -n local-path-storage patch configmap local-path-config -p '{"data": {"config.json": "{\n\"sharedFileSystemPath\": \"/var/local-path-provisioner\"\n}"}}'
+          kubectl get storageclass
+          kubectl describe storageclass standard
+          kubectl -n local-path-storage get configmap local-path-config -o yaml
+          kubectl -n local-path-storage logs -l app=local-path-provisioner --tail=50
 
       - name: Setup Cilium as Kind CNI
         run: |
