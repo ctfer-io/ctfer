@@ -56,10 +56,6 @@ jobs:
         run: |
           # From https://github.com/kubernetes-sigs/kind/issues/1487#issuecomment-2211072952
           kubectl -n local-path-storage patch configmap local-path-config -p '{"data": {"config.json": "{\n\"sharedFileSystemPath\": \"/var/local-path-provisioner\"\n}"}}'
-          kubectl get storageclass
-          kubectl describe storageclass standard
-          kubectl -n local-path-storage get configmap local-path-config -o yaml
-          kubectl -n local-path-storage logs -l app=local-path-provisioner --tail=50
 
       - name: Setup Cilium as Kind CNI
         run: |
@@ -70,10 +66,6 @@ jobs:
             --namespace kube-system \
             --set image.pullPolicy=IfNotPresent \
             --set ipam.mode=kubernetes
-          
-          # Wait so it is ready
-          kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
-          kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
       - name: Setup CNPG
         run: |
@@ -82,9 +74,6 @@ jobs:
             --namespace cnpg-system \
             --create-namespace \
             cnpg/cloudnative-pg
-
-          # Wait so it is ready
-          kubectl rollout status deployment/cnpg-cloudnative-pg -n cnpg-system --timeout=300s
 
       - name: Install Pulumi
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
@@ -101,45 +90,19 @@ jobs:
       #   with:
       #     docker-images: false # keep everything around here to avoid shoothing kind and local registry
 
-      - name: Test PVC
-        run: |
-          cat <<EOF | kubectl apply -f -
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            name: test-pvc
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 2Gi
-          ---
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test-pod
-          spec:
-            containers:
-              - name: test
-                image: busybox
-                command: ["sleep", "infinity"]
-                volumeMounts:
-                  - name: test-volume
-                    mountPath: /data
-            volumes:
-              - name: test-volume
-                persistentVolumeClaim:
-                  claimName: test-pvc
-          EOF
-          timeout 300 bash -c 'until kubectl get pod test-pod --no-headers | grep -q Running; do echo "$(date): $(kubectl get pod test-pod --no-headers)"; sleep 5; done && echo "Pod is Running"' || echo "Timed out after 5 minutes"
-
       - name: Run Smoke Tests
         run: |
           kubectl get pods -n kube-system
 
           mkdir coverdir # Directory in which coverage data are exported
           go test -v ./smoke/ -run=^Test_S_ -timeout=30m
+
+      - name: Upload events
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: ${{ always() }}
+        with:
+          name: events.json
+          path: /tmp/smoke-events.json
 
       - name: Merge coverages
         run: |
