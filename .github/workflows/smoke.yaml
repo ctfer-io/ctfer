@@ -90,6 +90,10 @@ jobs:
         run: |
           go tool covdata textfmt -i=coverdir -o=smoke.cov
 
+          # Point back to the actual Go module tested.
+          # It cannot be inferred, leading to this highly precise step.
+          sed -i 's|^/home/runner/work/ctfer|github.com/ctfer-io/ctfer|' smoke.cov
+
       - name: Upload smoke tests coverage
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
