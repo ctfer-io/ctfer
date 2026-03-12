@@ -62,10 +62,14 @@ jobs:
           # See https://docs.cilium.io/en/stable/installation/kind/#install-cilium
           helm repo add cilium https://helm.cilium.io/
 
-          helm install cilium cilium/cilium --version 1.18.5 \
+          helm install cilium cilium/cilium --version 1.19.1 \
             --namespace kube-system \
             --set image.pullPolicy=IfNotPresent \
             --set ipam.mode=kubernetes
+          
+          # Wait so it is ready
+          kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
+          kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
       - name: Setup CNPG
         run: |
@@ -74,6 +78,9 @@ jobs:
             --namespace cnpg-system \
             --create-namespace \
             cnpg/cloudnative-pg
+
+          # Wait so it is ready
+          kubectl rollout status deployment/cnpg-cloudnative-pg -n cnpg-system --timeout=300s
 
       - name: Install Pulumi
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6.6.1
