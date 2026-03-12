@@ -208,6 +208,9 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 	ctfd.pvc, err = corev1.NewPersistentVolumeClaim(ctx, "ctfd-pvc", &corev1.PersistentVolumeClaimArgs{
 		Metadata: metav1.ObjectMetaArgs{
 			Namespace: args.Namespace,
+			Annotations: pulumi.StringMap{
+				"pulumi.com/skipAwait": pulumi.String("true"),
+			},
 			Labels: pulumi.StringMap{
 				"app.kubernetes.io/component": pulumi.String("ctfd"),
 				"app.kubernetes.io/part-of":   pulumi.String("ctfer"),
