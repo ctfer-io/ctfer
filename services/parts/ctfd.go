@@ -398,13 +398,7 @@ func (ctfd *CTFd) provision(ctx *pulumi.Context, args *CTFdArgs, opts ...pulumi.
 				},
 			},
 		},
-	}, append(opts, pulumi.Timeouts(&pulumi.CustomTimeouts{
-		// This is quite big, in real setups it is shorter.
-		// These values are big for CI purposes, as the resources are highly restrained.
-		Create: "30m",
-		Update: "30m",
-		Delete: "30m",
-	}))...)
+	}, opts...)
 	if err != nil {
 		return
 	}
