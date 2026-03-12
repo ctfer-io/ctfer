@@ -92,10 +92,22 @@ jobs:
 
       - name: Run Smoke Tests
         run: |
-          kubectl get pods -n kube-system
+          while true; do
+            echo "=== $(date) ==="
+            kubectl get pods -n ctfer
+            echo "---"
+            kubectl get pvc -n ctfer
+            echo "---"
+            kubectl get events -n ctfer --sort-by=.lastTimestamp | tail -20
+            echo ""
+            sleep 10
+          done &
+          MONITOR_PID=$!
 
           mkdir coverdir # Directory in which coverage data are exported
           go test -v ./smoke/ -run=^Test_S_ -timeout=30m
+
+          kill $MONITOR_PID
 
       - name: Upload events
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
