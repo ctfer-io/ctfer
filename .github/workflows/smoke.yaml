@@ -96,10 +96,43 @@ jobs:
       # It is required due to Pulumi consuming large space when starting a prod-like
       # environment for Integration Tests purposes.
       # It removes around 25 Gib of disk space.
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        with:
-          docker-images: false # keep everything around here to avoid shoothing kind and local registry
+      # - name: Free Disk Space (Ubuntu)
+      #   uses: jlumbroso/free-disk-space@main
+      #   with:
+      #     docker-images: false # keep everything around here to avoid shoothing kind and local registry
+
+      - name: Test PVC
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: test-pvc
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 2Gi
+          ---
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: test-pod
+          spec:
+            containers:
+              - name: test
+                image: busybox
+                command: ["sleep", "infinity"]
+                volumeMounts:
+                  - name: test-volume
+                    mountPath: /data
+            volumes:
+              - name: test-volume
+                persistentVolumeClaim:
+                  claimName: test-pvc
+          EOF
+          timeout 300 bash -c 'until kubectl get pod test-pod --no-headers | grep -q Running; do echo "$(date): $(kubectl get pod test-pod --no-headers)"; sleep 5; done && echo "Pod is Running"' || echo "Timed out after 5 minutes"
 
       - name: Run Smoke Tests
         run: |
