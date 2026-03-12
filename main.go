@@ -196,8 +196,8 @@ func loadConfig(ctx *pulumi.Context) (*Config, error) {
 	if err := cfg.TryObject("platform", c.Platform); err != nil {
 		return nil, err
 	}
-	if platformRequestsCpu := cfg.Get("platform-requests-cpu"); platformRequestsCpu != "" {
-		c.Platform.Requests["cpu"] = platformRequestsCpu
+	if platformRequestsCPU := cfg.Get("platform-requests-cpu"); platformRequestsCPU != "" {
+		c.Platform.Requests["cpu"] = platformRequestsCPU
 	}
 	if platformRequestsMemory := cfg.Get("platform-requests-memory"); platformRequestsMemory != "" {
 		c.Platform.Requests["memory"] = platformRequestsMemory
