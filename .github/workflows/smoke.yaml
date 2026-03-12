@@ -94,6 +94,8 @@ jobs:
 
       - name: Run Smoke Tests
         run: |
+          kubectl get pods -n kube-system
+
           mkdir coverdir # Directory in which coverage data are exported
           go test -v ./smoke/ -run=^Test_S_ -timeout=30m
 
