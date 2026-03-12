@@ -93,13 +93,7 @@ jobs:
       - name: Run Smoke Tests
         run: |
           while true; do
-            echo "=== $(date) ==="
-            kubectl get pods -n ctfer
-            echo "---"
-            kubectl get pvc -n ctfer
-            echo "---"
-            kubectl get events -n ctfer --sort-by=.lastTimestamp | tail -20
-            echo ""
+            kubectl describe pod -n ctfer -l app.kubernetes.io/name=ctfd
             sleep 10
           done &
           MONITOR_PID=$!
