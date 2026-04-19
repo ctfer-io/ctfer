@@ -8,7 +8,7 @@ require (
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.28.0
 	github.com/pulumi/pulumi-random/sdk/v4 v4.19.1
 	github.com/pulumi/pulumi/pkg/v3 v3.229.0
-	github.com/pulumi/pulumi/sdk/v3 v3.229.0
+	github.com/pulumi/pulumi/sdk/v3 v3.231.0
 	go.uber.org/multierr v1.11.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -78,12 +78,12 @@ require (
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/git-pkgs/manifests v0.4.1 // indirect
-	github.com/git-pkgs/packageurl-go v0.2.1 // indirect
-	github.com/git-pkgs/purl v0.1.8 // indirect
-	github.com/git-pkgs/vers v0.2.2 // indirect
+	github.com/git-pkgs/packageurl-go v0.3.1 // indirect
+	github.com/git-pkgs/purl v0.1.10 // indirect
+	github.com/git-pkgs/vers v0.2.4 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
-	github.com/go-git/go-billy/v5 v5.6.2 // indirect
-	github.com/go-git/go-git/v5 v5.16.5 // indirect
+	github.com/go-git/go-billy/v5 v5.8.0 // indirect
+	github.com/go-git/go-git/v5 v5.17.2 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
