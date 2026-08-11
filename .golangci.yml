@@ -3,7 +3,7 @@ linters:
   default: none
   enable:
     - errcheck
-    - goconst
+    # - goconst # Disabled as we estimate it fine for such scale, plus changed behavior from previous working versions
     - gosec
     - govet
     - ineffassign
